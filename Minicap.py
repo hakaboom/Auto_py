@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import socket
 import time
 import struct
@@ -5,6 +6,9 @@ import subprocess
 import platform
 import re
 import json
+
+import cv2
+from numpy import np
 from loguru import logger
 
 DEFAULT_CHARSET = 'utf-8'
@@ -104,11 +108,12 @@ class _Minicap(_BaseClient):
         self.display_info = {}
 
     def set_minicap_port(self, port):
-        ret = subprocess.run([ADB_EXECUTOR, '-s', self.device_id, 'forward', 'tcp:{}'.format(self.minicap_port),
+        port = port or self.minicap_port
+        ret = subprocess.run([ADB_EXECUTOR, '-s', self.device_id, 'forward', 'tcp:{}'.format(port),
                               'localabstract:minicap'], stderr=subprocess.PIPE)
         stderr = str(ret.stderr, encoding='utf-8')
         if stderr.find('cannot bind') > -1:
-            logger.info(stderr)
+            logger.info('adb.exe: error: cannot bind listener:cannot bind to port:{}',port)
             port += 1
             return self.set_minicap_port(port)
         logger.info('minicap open in {}'.format(port))
@@ -152,18 +157,72 @@ class _Minicap(_BaseClient):
         self.display_info = display_info
         return display_info
 
-    def get_frame(self, porjection=None):
-        a = time.time()
-        params, display_info = self._get_params(porjection)
-        if self.display_id:
-            shell = 'adb -s {0} shell {1} -d {2} -n \'minicap\' -P %dx%d@%dx%d -s'
-            raw_data = subprocess.run({})
-        else:
-            shell = 'adb -s {0} shell {1} -n \'minicap\' -P '.format(self.device_id, self.CMD)
-            shell = shell + '%sx%s@%sx%s/%s -s' % params
-            raw_data = subprocess.run(shell, shell=True, stdout=subprocess.PIPE)
-            # logger.info(raw_data.stdout)
-        print(time.time()-a)
+    def get_frame(self):
+        flag = False
+        readBannerBytes = 0
+        bannerLength = 2
+        readFrameBytes = 0
+        frameBodyLengthRemaining = 0
+        frameBody = ''
+        banner = {
+            'version': 0,
+            'length': 0,
+            'pid': 0,
+            'realWidth': 0,
+            'realHeight': 0,
+            'virtualWidth': 0,
+            'virtualHeight': 0,
+            'orientation': 0,
+            'quirks': 0
+        }
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect(('localhost', self.minicap_port))
+        while True:
+            # chunk = client_socket.recv(4084)
+            chunk = client_socket.recv(12000)
+            if len(chunk) == 0:
+                continue
+
+        cursor = 0
+        while cursor < len(chunk):
+            if (readBannerBytes < bannerLength):
+                print((readBannerBytes, "---", bannerLength))
+                if readBannerBytes == 0:
+                    banner['version'] = int(hex(chunk[cursor]), 16)
+                elif readBannerBytes == 1:
+                    banner['length'] = bannerLength = int(hex(chunk[cursor]), 16)
+                elif readBannerBytes >= 2 and readBannerBytes <= 5:
+                    banner['pid'] = int(hex(chunk[cursor]), 16)
+                elif readBannerBytes == 23:
+                    banner['quirks'] = int(hex(chunk[cursor]), 16)
+
+                cursor += 1
+                readBannerBytes += 1
+
+            elif readFrameBytes < 4:
+                frameBodyLengthRemaining += (int(hex(chunk[cursor]), 16) << (readFrameBytes * 8))
+                cursor += 1
+                readFrameBytes += 1
+
+            else:
+                if len(chunk) - cursor >= frameBodyLengthRemaining:
+                    frameBody = frameBody + chunk[cursor:(cursor + frameBodyLengthRemaining)]
+                    if hex(frameBody[0]) != '0xff' or hex(frameBody[1]) != '0xd8':
+                        print(("Frame body does not strt with JPEG header", frameBody[0], frameBody[1]))
+                        exit()
+                    img = np.array(bytearray(frameBody))
+                    img = cv2.imdecode(img, 1)
+                    q.put(img)
+                    cursor += frameBodyLengthRemaining
+                    frameBodyLengthRemaining = 0
+                    readFrameBytes = 0
+                    frameBody = ''
+                else:
+                    frameBody = bytes(list(frameBody) + list(chunk[cursor:len(chunk)]))
+                    frameBodyLengthRemaining -= (len(chunk) - cursor)
+                    readFrameBytes += len(chunk) - cursor
+                    cursor = len(chunk)
+
 
     def _get_params(self, projection=None):
         display_info = self.display_info or self.get_display_info()
@@ -192,117 +251,3 @@ class Device(_Minicap):
 def connect(device_id, port=8000):
     return Device(device_id, port)
 
-
-def recv_with_timeout(sock, size, timeout=2):
-    sock.settimeout(timeout)
-    try:
-        ret = sock.recv(size)
-    except socket.timeout:
-        ret = None
-    finally:
-        sock.settimeout(None)
-    return ret
-
-
-def setup_stream_server(lazy=False):
-    """
-    Setup minicap process on device
-    Args:
-        lazy: parameter `-l` is used when True
-    Returns:
-        adb shell process, non-blocking stream reader and local port
-    """
-    localport, deviceport = self.adb.setup_forward("localabstract:minicap_{}".format)
-    deviceport = deviceport[len("localabstract:"):]
-    other_opt = "-l" if lazy else ""
-    params, display_info = self._get_params()
-    if self.display_id:
-        proc = self.adb.start_shell(
-            "%s -d %s -n '%s' -P %dx%d@%dx%d/%d %s 2>&1" %
-            tuple([self.CMD, self.display_id, deviceport] + list(params) + [other_opt]),
-        )
-    else:
-        proc = self.adb.start_shell(
-            "%s -n '%s' -P %dx%d@%dx%d/%d %s 2>&1" %
-            tuple([self.CMD, deviceport] + list(params) + [other_opt]),
-        )
-    nbsp = NonBlockingStreamReader(proc.stdout, print_output=True, name="minicap_server")
-    while True:
-        line = nbsp.readline(timeout=5.0)
-        if line is None:
-            raise RuntimeError("minicap server setup timeout")
-        if b"Server start" in line:
-            break
-
-    if proc.poll() is not None:
-        # minicap server setup error, may be already setup by others
-        # subprocess exit immediately
-        raise RuntimeError("minicap server quit immediately")
-
-    reg_cleanup(proc.kill)
-    self._stream_rotation = int(display_info["rotation"])
-    return proc, nbsp, localport
-
-
-def get_stream(lazy=True):
-    """
-    Get stream, it uses `adb forward`and socket communication. Use minicap ``lazy``mode (provided by gzmaruijie)
-    for long connections - returns one latest frame from the server
-    Args:
-        lazy: True or False
-    Returns:
-    """
-    gen = _get_stream(lazy)
-
-    # if quirk error, restart server and client once
-    stopped = next(gen)
-
-    if stopped:
-        try:
-            next(gen)
-        except StopIteration:
-            pass
-        gen = _get_stream(lazy)
-        next(gen)
-
-    return gen
-
-
-def _get_stream(lazy=True):
-    RECVTIMEOUT = 1
-    s = socket.socket()
-    s.connect(('127.0.0.1', 8001))
-    t = s.recv(24)
-    # minicap header
-    global_headers = struct.unpack("<2B5I2B", t)
-    logger.debug(global_headers)
-    # check quirk-bitflags, reference: https://github.com/openstf/minicap#quirk-bitflags
-    ori, quirk_flag = global_headers[-2:]
-
-    if quirk_flag & 2 and ori in (1, 3):
-        # resetup
-        logger.debug("quirk_flag found, going to resetup")
-        stopping = True
-    else:
-        stopping = False
-    yield stopping
-
-    while not stopping:
-        if lazy:
-            s.send(b"1")
-        # recv frame header, count frame_size
-        if RECVTIMEOUT is not None:
-            header = recv_with_timeout(s, 4, RECVTIMEOUT)
-        else:
-            header = s.recv(4)
-        if header is None:
-            logger.error("minicap header is None")
-            # recv timeout, if not frame updated, maybe screen locked
-            stopping = yield None
-        else:
-            frame_size = struct.unpack("<I", header)[0]
-            frame_data = s.recv(frame_size)
-            stopping = yield frame_data
-
-    logger.debug("minicap stream ends")
-    s.close()
