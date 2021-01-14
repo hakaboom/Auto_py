@@ -94,7 +94,6 @@ def test():
 from adb import ADB
 
 a=ADB(device_id='emulator-5562')
-b=a.start_cmd('devices')
 
-for line in b.stdout.readlines():
-  print(line.strip())
+b=a.devices('device')
+print(b)

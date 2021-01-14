@@ -29,7 +29,7 @@ def is_device_connected(device_id):
     try:
         device_name = subprocess.check_output([ADB_EXECUTOR, '-s', device_id, 'shell', 'getprop', 'ro.product.model'])
         device_name = device_name.decode(DEFAULT_CHARSET).replace('\n', '').replace('\r', '')
-        logger.info('device {} online'.format(device_name))
+        logger.debug('device {} online'.format(device_name))
     except subprocess.CalledProcessError:
         return False
     return True
@@ -46,7 +46,7 @@ class _BaseClient(object):
         self.abi = self.get_abi()
         self.sdk = self.get_sdk()
         if self.is_mnc_installed():
-            logger.info('minicap already existed in {}'.format(device_id))
+            logger.debug('minicap already existed in {}'.format(device_id))
         else:
             self.push_target_mnc()
             self.push_target_mnc_so()
@@ -54,35 +54,35 @@ class _BaseClient(object):
     def get_abi(self):
         """ get abi (application binary interface) """
         abi = subprocess.getoutput('{} -s {} shell getprop ro.product.cpu.abi'.format(ADB_EXECUTOR, self.device_id))
-        logger.info('device {} abi is {}'.format(self.device_id, abi))
+        logger.debug('device {} abi is {}'.format(self.device_id, abi))
         return abi
 
     def get_sdk(self):
         """ get sdk version """
         sdk = subprocess.getoutput('{} -s {} shell getprop ro.build.version.sdk'.format(ADB_EXECUTOR, self.device_id))
-        logger.info('device {} sdk is {}'.format(self.device_id, sdk))
+        logger.debug('device {} sdk is {}'.format(self.device_id, sdk))
         return sdk
 
     def push_target_mnc(self):
         """ push specific minicap """
         mnc_path = './android/{}/bin/minicap'.format(self.abi)
-        logger.info('target minicap path: ' + mnc_path)
+        logger.debug('target minicap path: ' + mnc_path)
 
         # push and grant
         subprocess.run([ADB_EXECUTOR, '-s', self.device_id, 'push', mnc_path, MNC_HOME], stdout=subprocess.DEVNULL)
         subprocess.run([ADB_EXECUTOR, '-s', self.device_id, 'shell', 'chmod', '777', MNC_HOME])
-        logger.info('minicap installed in {}'.format(MNC_HOME))
+        logger.debug('minicap installed in {}'.format(MNC_HOME))
 
     def push_target_mnc_so(self):
         """ push specific minicap.so (they should work together) """
         mnc_so_path = './android/{}/lib/android-{}/minicap.so'.format(self.abi, self.sdk)
-        logger.info('target minicap.so url: ' + mnc_so_path)
+        logger.debug('target minicap.so url: ' + mnc_so_path)
 
         # push and grant
         subprocess.run([ADB_EXECUTOR, '-s', self.device_id, 'push', mnc_so_path, MNC_SO_HOME],
                        stdout=subprocess.DEVNULL)
         subprocess.run([ADB_EXECUTOR, '-s', self.device_id, 'shell', 'chmod', '777', MNC_SO_HOME])
-        logger.info('minicap.so installed in {}'.format(MNC_SO_HOME))
+        logger.debug('minicap.so installed in {}'.format(MNC_SO_HOME))
 
     def is_installed(self, name):
         """ check if is existed in /data/local/tmp """
@@ -113,10 +113,10 @@ class _Minicap(_BaseClient):
                               'localabstract:minicap'], stderr=subprocess.PIPE)
         stderr = str(ret.stderr, encoding='utf-8')
         if stderr.find('cannot bind') > -1:
-            logger.info('adb.exe: error: cannot bind listener:cannot bind to port:{}',port)
+            logger.debug('adb.exe: error: cannot bind listener:cannot bind to port:{}',port)
             port += 1
             return self.set_minicap_port(port)
-        logger.info('minicap open in {}'.format(port))
+        logger.debug('minicap open in {}'.format(port))
 
     def get_display_info(self):
         """
@@ -139,7 +139,6 @@ class _Minicap(_BaseClient):
         wm_size = subprocess.run([ADB_EXECUTOR, '-s', self.device_id, 'shell', 'wm', 'size'], stdout=subprocess.PIPE)
         wm_size_stdout = str(wm_size.stdout, encoding='utf-8')
         wm_size_arr = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size_stdout)
-        logger.info('display_size {}', wm_size_arr)
         if len(wm_size_arr) > 0:
             display_info['physical_width'] = display_info['width']
             display_info['physical_height'] = display_info['height']
@@ -149,11 +148,10 @@ class _Minicap(_BaseClient):
         wm_dpi = subprocess.run([ADB_EXECUTOR, '-s', self.device_id, 'shell', 'wm', 'density'], stdout=subprocess.PIPE)
         wm_dpi_stdout = str(wm_dpi.stdout, encoding='utf-8')
         wm_dpi_arr = re.findall(r'Physical density: (\d+)\r', wm_dpi_stdout)
-        logger.info('display_dpi {}', wm_dpi_arr)
         if len(wm_dpi_arr) > 0:
             display_info['dpi'] = wm_dpi_arr[0]
 
-        logger.info('display_info {}', display_info)
+        logger.debug('display_info {}', display_info)
         self.display_info = display_info
         return display_info
 
