@@ -8,7 +8,7 @@ import re
 import json
 
 import cv2
-from numpy import np
+import numpy
 from loguru import logger
 
 DEFAULT_CHARSET = 'utf-8'
@@ -158,71 +158,7 @@ class _Minicap(_BaseClient):
         return display_info
 
     def get_frame(self):
-        flag = False
-        readBannerBytes = 0
-        bannerLength = 2
-        readFrameBytes = 0
-        frameBodyLengthRemaining = 0
-        frameBody = ''
-        banner = {
-            'version': 0,
-            'length': 0,
-            'pid': 0,
-            'realWidth': 0,
-            'realHeight': 0,
-            'virtualWidth': 0,
-            'virtualHeight': 0,
-            'orientation': 0,
-            'quirks': 0
-        }
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect(('localhost', self.minicap_port))
-        while True:
-            # chunk = client_socket.recv(4084)
-            chunk = client_socket.recv(12000)
-            if len(chunk) == 0:
-                continue
-
-        cursor = 0
-        while cursor < len(chunk):
-            if (readBannerBytes < bannerLength):
-                print((readBannerBytes, "---", bannerLength))
-                if readBannerBytes == 0:
-                    banner['version'] = int(hex(chunk[cursor]), 16)
-                elif readBannerBytes == 1:
-                    banner['length'] = bannerLength = int(hex(chunk[cursor]), 16)
-                elif readBannerBytes >= 2 and readBannerBytes <= 5:
-                    banner['pid'] = int(hex(chunk[cursor]), 16)
-                elif readBannerBytes == 23:
-                    banner['quirks'] = int(hex(chunk[cursor]), 16)
-
-                cursor += 1
-                readBannerBytes += 1
-
-            elif readFrameBytes < 4:
-                frameBodyLengthRemaining += (int(hex(chunk[cursor]), 16) << (readFrameBytes * 8))
-                cursor += 1
-                readFrameBytes += 1
-
-            else:
-                if len(chunk) - cursor >= frameBodyLengthRemaining:
-                    frameBody = frameBody + chunk[cursor:(cursor + frameBodyLengthRemaining)]
-                    if hex(frameBody[0]) != '0xff' or hex(frameBody[1]) != '0xd8':
-                        print(("Frame body does not strt with JPEG header", frameBody[0], frameBody[1]))
-                        exit()
-                    img = np.array(bytearray(frameBody))
-                    img = cv2.imdecode(img, 1)
-                    q.put(img)
-                    cursor += frameBodyLengthRemaining
-                    frameBodyLengthRemaining = 0
-                    readFrameBytes = 0
-                    frameBody = ''
-                else:
-                    frameBody = bytes(list(frameBody) + list(chunk[cursor:len(chunk)]))
-                    frameBodyLengthRemaining -= (len(chunk) - cursor)
-                    readFrameBytes += len(chunk) - cursor
-                    cursor = len(chunk)
-
+       pass
 
     def _get_params(self, projection=None):
         display_info = self.display_info or self.get_display_info()
