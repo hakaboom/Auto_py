@@ -12,10 +12,14 @@ from typing import Tuple,List
 import cv2
 import numpy as np
 from Minicap import connect
+from adb import ADB
 from loguru import logger
 
-devices = connect('emulator-5562')
-# devices.get_display_info()
+
+# devices = connect('emulator-5554')
+a = ADB(device_id='emulator-5554')
+minicap = a.start_shell('LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P 1920x1080@1920x1080/0 -l 2>&1')
+
 def test():
     flag = False
     readBannerBytes = 0
@@ -34,13 +38,12 @@ def test():
         'orientation': 0,
         'quirks': 0
     }
-    a=time.time()
+    time1=time.time()
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.connect(('localhost', 8000))
-    shell = 'adb -s emulator-5562 shell LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P 1280x720@1280x720/0 2>&1'
-    # subprocess.run(shell,shell=True)
-    os.popen(shell)
-    print(time.time()-a)
+    shell = 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P 1920x1080@1920x1080/0 2>&1'
+    a.start_shell(shell)
+    print(time.time()-time1)
     while True:
         chunk = client_socket.recv(12000)
         if len(chunk) == 0:
@@ -91,8 +94,8 @@ def test():
                     cursor = len(chunk)
 
 
-from adb import ADB
 
-#a = ADB(device_id='emulator-5562')
+
+
 #print(a.shell('ls'))
-test()
+# test()

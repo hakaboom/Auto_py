@@ -10,7 +10,6 @@ import subprocess
 import threading
 from typing import Union
 
-import requests
 from loguru import logger
 
 THISPATH = os.path.dirname(os.path.realpath(__file__))
@@ -63,7 +62,8 @@ class ADB(object):
         self.device_id = device_id
         self.adb_path = adb_path or self.builtin_adb_path()
         self._set_cmd_options(host, port)
-        self._sdk_version = 0
+        self._sdk_version = 0   # sdk版本
+        self._forward_local_using = [] # 已经使用的端口
 
     @staticmethod
     def builtin_adb_path() -> str:
@@ -109,8 +109,7 @@ class ADB(object):
 
     def start_cmd(self, cmds, devices=True):
         """
-        用cmds创建一个subprocess
-
+        用cmds创建一个subprocess.Popen
         :param cmds:
             需要运行的参数,可以是list,str
         :param devices:
@@ -132,6 +131,7 @@ class ADB(object):
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         return proc
 
@@ -298,6 +298,25 @@ class ADB(object):
         if self._sdk_version is None:
             self._sdk_version = int(self.getprop('ro.build.version.sdk'))
         return self._sdk_version
+
+    def forward(self, local, remote, no_rebind=True):
+        """
+        运行adb forward
+        :param local:
+            要转发的本地端口
+        :param remote:
+            要与local绑定的设备端口
+        :return:
+            None
+        """
+        cmds = ['forward']
+        if no_rebind:
+            cmds += ['--no-rebind']
+        self.cmd(cmds +[local, remote])
+        if local in self._forward_local_using:
+            self._forward_local_using.append(local)
+
+
 
     def push(self, local, remote):
         """
