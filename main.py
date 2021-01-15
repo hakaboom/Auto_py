@@ -12,9 +12,9 @@ from typing import Tuple,List
 import cv2
 import numpy as np
 from Minicap import connect
+from loguru import logger
 
-
-# devices = connect('emulator-5562')
+devices = connect('emulator-5562')
 # devices.get_display_info()
 def test():
     flag = False
@@ -93,7 +93,6 @@ def test():
 
 from adb import ADB
 
-a=ADB(device_id='emulator-5562')
-
-b=a.devices('device')
-print(b)
+#a = ADB(device_id='emulator-5562')
+#print(a.shell('ls'))
+test()

@@ -10,6 +10,7 @@ import subprocess
 import threading
 from typing import Union
 
+import requests
 from loguru import logger
 
 THISPATH = os.path.dirname(os.path.realpath(__file__))
@@ -39,15 +40,30 @@ def get_std_encoding(stream):
     return getattr(stream, "encoding", None) or sys.getfilesystemencoding()
 
 
+class AdbError(Exception):
+    """
+        This is AdbError BaseError
+        When ADB have something wrong
+    """
+    def __init__(self, stdout, stderr):
+        self.stdout = stdout
+        self.stderr = stderr
+
+    def __str__(self):
+        return "stdout[%s] stderr[%s]" % (self.stdout, self.stderr)
+
+
 class ADB(object):
     """adb object class"""
-    status_devices = 'devices'
+    status_device = 'device'
     status_offline = 'offline'
+    SHELL_ENCODING = 'utf-8'
 
     def __init__(self, device_id=None, adb_path=None, host='127.0.0.1', port=5037):
         self.device_id = device_id
         self.adb_path = adb_path or self.builtin_adb_path()
         self._set_cmd_options(host, port)
+        self._sdk_version = 0
 
     @staticmethod
     def builtin_adb_path() -> str:
@@ -100,7 +116,7 @@ class ADB(object):
         :param devices:
             如果为True,则需要指定device-id,命令中会传入-s
         :return:
-            subprocess
+            subprocess.Popen
         """
         if devices:
             if not self.device_id:
@@ -139,7 +155,7 @@ class ADB(object):
 
     def cmd(self, cmds, devices=True, ensure_unicode=True, timeout=None):
         """
-        用cmds发生adb命令,并且返回stdout
+        用cmds创建adb命令,并且返回stdout
 
         :param cmds:
             需要运行的参数,可以是list,str
@@ -172,15 +188,14 @@ class ADB(object):
 
         if proc.returncode > 0:
             # adb error
-            logger.error("adb connection error {stdout} {stderr}".format(stderr=stderr, stdout=stdout))
-            raise
+            raise logger.error("adb connection error {stdout} {stderr}".format(stderr=stderr, stdout=stdout))
         return stdout
 
-    def devices(self, state: str = None):
+    def devices(self, state=None):
         """
         adb devices,返回一个list包含了devices
         :param state:
-            过滤属性 'device', 'offline'
+            过滤属性比如: 'device', 'offline'
         :return:
             返回adb设备列表 List
         """
@@ -197,3 +212,101 @@ class ADB(object):
                 continue
             device_list.append((serialno, cstate))
         return device_list
+
+    def connect(self):
+        """
+        运行adb connect命令
+        :return:
+            None
+        """
+        if self.device_id and ':' in self.device_id:
+            connect_result = self.cmd("connect %s" % self.device_id)
+            logger.info(connect_result)
+
+    def disconnect(self):
+        """
+        运行adb disconnect
+        :return:
+            None
+        """
+        if ':' in self.device_id:
+            self.cmd("disconnect %s" % self.device_id)
+
+    def start_shell(self, cmds):
+        """
+        运行adb shell
+        :param cmds:
+            需要运行的参数,可以是list,str
+        :return:
+            subprocess.Popen
+        """
+        cmds = ['shell'] + split_cmd(cmds)
+        return self.start_cmd(cmds)
+
+    def raw_shell(self, cmds, ensure_unicode: bool = True):
+        """
+        运行adb shell并返回
+        :param cmds:
+            需要运行的参数,可以是list,str
+        :param ensure_unicode:
+        :return:
+            返回命令结果stdout
+        """
+        cmds = ['shell'] + split_cmd(cmds)
+        stdout = self.cmd(cmds, ensure_unicode=False)
+        if not ensure_unicode:
+            return stdout
+        try:
+            return stdout.decode(self.SHELL_ENCODING)
+        except UnicodeDecodeError:
+            logger.error('shell output decode {} fail. repr={}'.format(self.SHELL_ENCODING, repr(stdout)))
+            return str(repr(stdout))
+
+    def shell(self, cmd):
+
+        if self.sdk_version < 25:
+            # sdk_version < 25, adb shell 不返回错误
+            # https://issuetracker.google.com/issues/36908392
+            cmd = split_cmd(cmd) + [";", "echo", "---$?---"]
+            out = self.raw_shell(cmd).rstrip()
+            m = re.match("(.*)---(\d+)---$", out, re.DOTALL)
+            if not m:
+                warnings.warn("return code not matched")
+                stdout = out
+                returncode = 0
+            else:
+                stdout = m.group(1)
+                returncode = int(m.group(2))
+            if returncode > 0:
+                raise logger.error('adb shell error')
+            return stdout
+        else:
+            try:
+                out = self.raw_shell(cmd)
+            except AdbError as err:
+                raise logger.error("stdout={},stderr={}".format(err.stdout,err.stderr))
+            else:
+                return out
+
+    @property
+    def sdk_version(self):
+        """
+        获取SDK version
+        :return:
+            SDK version
+        """
+        if self._sdk_version is None:
+            self._sdk_version = int(self.getprop('ro.build.version.sdk'))
+        return self._sdk_version
+
+    def push(self, local, remote):
+        """
+        运行adb push
+        :param local:
+            需要发送的文件路径
+        :param remote:
+            发送到设备上的路径
+        :return:
+            None
+        """
+        self.cmd(["push", local, remote], ensure_unicode=False)
