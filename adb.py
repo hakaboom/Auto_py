@@ -44,6 +44,7 @@ class AdbError(Exception):
         This is AdbError BaseError
         When ADB have something wrong
     """
+
     def __init__(self, stdout, stderr):
         self.stdout = stdout
         self.stderr = stderr
@@ -62,8 +63,9 @@ class ADB(object):
         self.device_id = device_id
         self.adb_path = adb_path or self.builtin_adb_path()
         self._set_cmd_options(host, port)
-        self._sdk_version = 0   # sdk版本
-        self._forward_local_using = [] # 已经使用的端口
+        self._sdk_version = 0  # sdk版本
+        self._forward_local_using = self.get_forwards()  # 已经使用的端口
+        self.connect()
 
     @staticmethod
     def builtin_adb_path() -> str:
@@ -284,7 +286,7 @@ class ADB(object):
             try:
                 out = self.raw_shell(cmd)
             except AdbError as err:
-                raise logger.error("stdout={},stderr={}".format(err.stdout,err.stderr))
+                raise logger.error("stdout={},stderr={}".format(err.stdout, err.stderr))
             else:
                 return out
 
@@ -312,13 +314,60 @@ class ADB(object):
         cmds = ['forward']
         if no_rebind:
             cmds += ['--no-rebind']
-        self.cmd(cmds +[local, remote])
+        self.cmd(cmds + [local, remote])
         if local in self._forward_local_using:
-            self._forward_local_using.append(local)
+            self._forward_local_using.append({'local': local, 'remote': remote})
 
+    def get_forwards(self) -> list:
+        """
+        运行 adb forwar --list获取端口占用列表
+        :return:
+            返回一个包含占用信息的列表,每个包含键值local和remote
+        """
+        l = []
+        out = self.cmd(['forward', '--list'])
+        for line in out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            cols = line.split()
+            if len(cols) != 3:
+                continue
+            device_id, local, remote = cols
+            l.append({'local': local, 'remote': remote})
+            return l
 
+    def _local_in_forwards(self, local) -> bool:
+        """
+        检查local是否已经启用
+        :return:
+            bool
+        """
+        l = self.get_forwards()
+        for i in range(len(l)):
+            if l[i]['local'] == local:
+                return True, i
+        return False
 
-    def push(self, local, remote):
+    def remove_forward(self, local=None):
+        """
+        运行adb forward -- remove
+        :param local:
+            tcp port,如不填写则清楚所以绑定
+        :return:
+            None
+        """
+        if local:
+            cmds = ['forward', '--remove', local]
+        else:
+            cmds = ['forward', '--remove-all']
+        self.cmd(cmds)
+        local_using, index = local and self._local_in_forwards(local) or (False, -1)
+        # 删除在_forward_local_using里的记录
+        if local_using:
+            del self._forward_local_using[index]
+
+    def push(self, local, remote) -> None:
         """
         运行adb push
         :param local:
@@ -329,3 +378,15 @@ class ADB(object):
             None
         """
         self.cmd(["push", local, remote], ensure_unicode=False)
+
+    def pull(self, remote, local) -> None:
+        """
+        运行adb pull
+        :param remote:
+            设备上的路径
+        :param local:
+            pull到本地的路径
+        :return:
+            None
+        """
+        self.cmd(["pull", remote, local], ensure_unicode=False)

@@ -17,9 +17,12 @@ from loguru import logger
 
 
 # devices = connect('emulator-5554')
-a = ADB(device_id='emulator-5554')
-minicap = a.start_shell('LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P 1920x1080@1920x1080/0 -l 2>&1')
+a = ADB(device_id='emulator-5562')
 
+# minicap = a.start_shell('LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P 1920x1080@1920x1080/0 -l 2>&1')
+# adb shell LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P 1920x1080@1920x1080/0
+# a.forward('tcp:8000','localabstract:minicap')
+# a.start_shell('LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P 1920x1080@1920x1080/0')
 def test():
     flag = False
     readBannerBytes = 0
@@ -38,12 +41,12 @@ def test():
         'orientation': 0,
         'quirks': 0
     }
-    time1=time.time()
+    time1 = time.time()
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.connect(('localhost', 8000))
-    shell = 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P 1920x1080@1920x1080/0 2>&1'
+    shell = 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -n "minicap" -s'
     a.start_shell(shell)
-    print(time.time()-time1)
+
     while True:
         chunk = client_socket.recv(12000)
         if len(chunk) == 0:
@@ -64,8 +67,6 @@ def test():
                 cursor += 1
                 readBannerBytes += 1
 
-                if readBannerBytes == bannerLength:
-                    print(('banner', banner))
 
             elif readFrameBytes < 4:
                 frameBodyLengthRemaining += (int(hex(chunk[cursor]), 16) << (readFrameBytes * 8))
@@ -80,8 +81,7 @@ def test():
                         exit()
                     img = np.array(bytearray(frameBody))
                     img = cv2.imdecode(img, 1)
-                    img = cv2.resize(img, (1280, 720))
-                    cv2.imshow('img1', img)
+                    img = cv2.resize(img, (1920,1080))
                     cv2.imwrite('test1.png', img)
                     cursor += frameBodyLengthRemaining
                     client_socket.close()
@@ -97,5 +97,9 @@ def test():
 
 
 
-#print(a.shell('ls'))
-# test()
+#  启动minicap服务,并且给forwar端口给minicap
+# time1 = time.time()
+# for i in range(60):
+#     test()
+#
+# print((time.time()-time1))
