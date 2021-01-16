@@ -66,6 +66,8 @@ class ADB(object):
         self._sdk_version = 0  # sdk版本
         self._forward_local_using = self.get_forwards()  # 已经使用的端口
         self.connect()
+        self._abi_version = self.abi_version()
+        self._sdk_version = self.sdk_version()
 
     @staticmethod
     def builtin_adb_path() -> str:
@@ -83,8 +85,15 @@ class ADB(object):
             del os.environ["ANDROID_HOME"]
         return adb_path
 
-    def _set_cmd_options(self, host, port):
-        """设置adb服务器"""
+    def _set_cmd_options(self, host : str, port : int):
+        """
+        设置adb服务器
+        Args:
+            host: adb路径
+            port: adb端口号
+        Returns:
+            None
+        """
         self.host = host
         self.port = port
         self.cmd_options = [self.adb_path]
@@ -95,7 +104,7 @@ class ADB(object):
 
     def start_server(self):
         """
-        等于 adb start-server
+        command 'adb start-server'
 
         :return: None
         """
@@ -103,20 +112,20 @@ class ADB(object):
 
     def kill_server(self):
         """
-        等于 adb kill-server
+        command 'adb kill-server'
 
         :return: None
         """
         return self.cmd('kill-server', devices=False)
 
-    def start_cmd(self, cmds, devices=True):
+    def start_cmd(self, cmds: Union[list, str], devices: bool = True) -> subprocess.Popen:
         """
         用cmds创建一个subprocess.Popen
-        :param cmds:
-            需要运行的参数,可以是list,str
-        :param devices:
-            如果为True,则需要指定device-id,命令中会传入-s
-        :return:
+
+        Args:
+            cmds: 需要运行的参数,可以是list,str
+            devices: 如果为True,则需要指定device-id,命令中会传入-s
+        Returns:
             subprocess.Popen
         """
         if devices:
@@ -125,9 +134,8 @@ class ADB(object):
             cmd_options = self.cmd_options + ['-s', self.device_id]
         else:
             cmd_options = self.cmd_options
-
         cmds = cmd_options + split_cmd(cmds)
-        logger.debug(" ".join(cmds))
+        logger.debug('adb -s %s' % " ".join(cmds[2:]))
         proc = subprocess.Popen(
             cmds,
             stdin=subprocess.PIPE,
@@ -138,13 +146,15 @@ class ADB(object):
         return proc
 
     @staticmethod
-    def close_proc_pipe(proc):
+    def close_proc_pipe(proc: subprocess.Popen) -> None:
         """
         关闭stdin,stdout,stderr流对象
-        :param proc: 
-            选择关闭的Popen对象
-        :return:
-            None 
+        
+        Args: 
+            proc: 选择关闭的Popen对象
+            
+        Returns:
+             None 
         """""
 
         def close_pipe(pipe):
@@ -155,19 +165,17 @@ class ADB(object):
         close_pipe(proc.stdout)
         close_pipe(proc.stderr)
 
-    def cmd(self, cmds, devices=True, ensure_unicode=True, timeout=None):
+    def cmd(self, cmds: Union[list, str], devices: bool = True, ensure_unicode: bool = True, timeout: int = None):
         """
         用cmds创建adb命令,并且返回stdout
 
-        :param cmds:
-            需要运行的参数,可以是list,str
-        :param devices:
-            如果为True,则需要指定device-id,命令中会传入-s
-        :param ensure_unicode:
-            是否解码stdout,stderr
-        :param timeout:
-            设置命令超时时间
-        :return:
+        Args:
+            cmds: 需要运行的参数,可以是list,str
+            devices: 如果为True,则需要指定device-id,命令中会传入-s
+            ensure_unicode: 是否解码stdout,stderr
+            timeout: 设置命令超时时间
+
+        Returns:
             返回命令结果stdout
         """
         proc = self.start_cmd(cmds, devices)
@@ -193,12 +201,13 @@ class ADB(object):
             raise logger.error("adb connection error {stdout} {stderr}".format(stderr=stderr, stdout=stdout))
         return stdout
 
-    def devices(self, state=None):
+    def devices(self, state: bool = None):
         """
-        adb devices,返回一个list包含了devices
-        :param state:
-            过滤属性比如: 'device', 'offline'
-        :return:
+        command adb devices
+
+        Args:
+            state: 过滤属性比如: 'device', 'offline'
+        Returns:
             返回adb设备列表 List
         """
         patten = re.compile(r'^[\w\d.:-]+\t[\w]+$')
@@ -217,9 +226,10 @@ class ADB(object):
 
     def connect(self):
         """
-        运行adb connect命令
-        :return:
-            None
+        command adb connect
+
+        Returns:
+             None
         """
         if self.device_id and ':' in self.device_id:
             connect_result = self.cmd("connect %s" % self.device_id)
@@ -227,44 +237,30 @@ class ADB(object):
 
     def disconnect(self):
         """
-        运行adb disconnect
-        :return:
-            None
+        command adb disconnect
+
+        Returns:
+             None
         """
         if ':' in self.device_id:
             self.cmd("disconnect %s" % self.device_id)
 
-    def start_shell(self, cmds):
-        """
-        运行adb shell
-        :param cmds:
-            需要运行的参数,可以是list,str
-        :return:
-            subprocess.Popen
-        """
+    def start_shell(self, cmds: Union[list, str]) -> start_cmd:
         cmds = ['shell'] + split_cmd(cmds)
         return self.start_cmd(cmds)
 
-    def raw_shell(self, cmds, ensure_unicode: bool = True):
-        """
-        运行adb shell并返回
-        :param cmds:
-            需要运行的参数,可以是list,str
-        :param ensure_unicode:
-        :return:
-            返回命令结果stdout
-        """
+    def raw_shell(self, cmds: Union[list, str], ensure_unicode: bool = True):
         cmds = ['shell'] + split_cmd(cmds)
         stdout = self.cmd(cmds, ensure_unicode=False)
         if not ensure_unicode:
             return stdout
         try:
-            return stdout.decode(self.SHELL_ENCODING)
+            return stdout.decode(self.SHELL_ENCODING).rstrip('\r\n')
         except UnicodeDecodeError:
             logger.error('shell output decode {} fail. repr={}'.format(self.SHELL_ENCODING, repr(stdout)))
             return str(repr(stdout))
 
-    def shell(self, cmd):
+    def shell(self, cmd: Union[list, str]):
 
         if self.sdk_version < 25:
             # sdk_version < 25, adb shell 不返回错误
@@ -290,17 +286,6 @@ class ADB(object):
             else:
                 return out
 
-    @property
-    def sdk_version(self):
-        """
-        获取SDK version
-        :return:
-            SDK version
-        """
-        if self._sdk_version is None:
-            self._sdk_version = int(self.getprop('ro.build.version.sdk'))
-        return self._sdk_version
-
     def forward(self, local, remote, no_rebind=True):
         """
         运行adb forward
@@ -311,12 +296,15 @@ class ADB(object):
         :return:
             None
         """
-        cmds = ['forward']
-        if no_rebind:
-            cmds += ['--no-rebind']
-        self.cmd(cmds + [local, remote])
-        if local in self._forward_local_using:
+        if not self._local_in_forwards(local):
+            cmds = ['forward']
+            if no_rebind:
+                cmds += ['--no-rebind']
+            self.cmd(cmds + [local, remote])
             self._forward_local_using.append({'local': local, 'remote': remote})
+            logger.debug('forward {} {}'.format(local, remote))
+        else:
+            logger.debug('{} {} has been forward'.format(local, remote))
 
     def get_forwards(self) -> list:
         """
@@ -335,7 +323,7 @@ class ADB(object):
                 continue
             device_id, local, remote = cols
             l.append({'local': local, 'remote': remote})
-            return l
+        return l
 
     def _local_in_forwards(self, local) -> bool:
         """
@@ -390,3 +378,57 @@ class ADB(object):
             None
         """
         self.cmd(["pull", remote, local], ensure_unicode=False)
+
+    def abi_version(self):
+        """ get abi (application binary interface) """
+        abi = self.raw_shell(['getprop', 'ro.product.cpu.abi'])
+        logger.info('device {} abi is {}'.format(self.device_id, abi))
+        return abi
+
+    def sdk_version(self):
+        """ get sdk version """
+        sdk = self.raw_shell(['getprop', 'ro.build.version.sdk'])
+        logger.info('device {} sdk is {}'.format(self.device_id, sdk))
+        return sdk
+
+
+class _Minicap(ADB):
+
+    MNC_HOME = '/data/local/tmp/minicap'
+    MNC_SO_HOME = '/data/local/tmp/minicap.so'
+
+    def _push_target_mnc(self):
+        """ push specific minicap """
+        mnc_path = "./android/{}/bin/minicap".format(self._abi_version)
+        # logger.debug('target minicap path: ' + mnc_path)
+
+        # push and grant
+        self.start_cmd(['push', mnc_path, self.MNC_HOME])
+        self.start_shell(['chmod', '777', self.MNC_HOME])
+        logger.debug('minicap installed in {}'.format(self.MNC_HOME))
+
+    def _push_target_mnc_so(self):
+        """ push specific minicap.so (they should work together) """
+        mnc_so_path = './android/{}/lib/android-{}/minicap.so'.format(self._abi_version, self._sdk_version)
+        # logger.debug('target minicap.so url: ' + mnc_so_path)
+
+        # push and grant
+        self.start_cmd(['push', mnc_so_path, self.MNC_SO_HOME])
+        self.start_shell(['chmod', '777', self.MNC_SO_HOME])
+        logger.debug('minicap.so installed in {}'.format(self.MNC_SO_HOME))
+
+    def _is_mnc_install(self):
+        """
+        检查minicap和minicap.so是否安装
+        :return:
+            None
+        """
+
+
+class Device(_Minicap):
+    pass
+
+
+def connect(device_id=None, adb_path=None, host='127.0.0.1', port=5037):
+    return Device(device_id, adb_path, host, port)
+

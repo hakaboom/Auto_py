@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import time
+import timeit
 import socket
 import sys
 import os
@@ -12,17 +13,19 @@ from typing import Tuple,List
 import cv2
 import numpy as np
 from Minicap import connect
-from adb import ADB
+
+
 from loguru import logger
 
 
 # devices = connect('emulator-5554')
-a = ADB(device_id='emulator-5562')
+#a = ADB(device_id='emulator-5554')
 
 # minicap = a.start_shell('LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P 1920x1080@1920x1080/0 -l 2>&1')
 # adb shell LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P 1920x1080@1920x1080/0
-# a.forward('tcp:8000','localabstract:minicap')
+# a.forward('tcp:8001', 'localabstract:minicap')
 # a.start_shell('LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P 1920x1080@1920x1080/0')
+# time.sleep(1)
 def test():
     flag = False
     readBannerBytes = 0
@@ -43,12 +46,11 @@ def test():
     }
     time1 = time.time()
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect(('localhost', 8000))
+    client_socket.connect(('localhost', 8001))
     shell = 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -n "minicap" -s'
     a.start_shell(shell)
-
     while True:
-        chunk = client_socket.recv(12000)
+        chunk = client_socket.recv(36000)
         if len(chunk) == 0:
             continue
 
@@ -95,11 +97,13 @@ def test():
 
 
 
-
-
 #  启动minicap服务,并且给forwar端口给minicap
-# time1 = time.time()
-# for i in range(60):
+# for i in range(100):
+#     time1 = time.time()
 #     test()
-#
-# print((time.time()-time1))
+#     print((time.time()-time1))
+
+
+from adb import connect
+a = connect(device_id='emulator-5554')
+
