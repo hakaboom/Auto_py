@@ -4,12 +4,16 @@ import re
 import sys
 import time
 import random
+import socket
 import platform
 import warnings
 import subprocess
+import json
 import threading
 from typing import Union
 
+import cv2
+import numpy as np
 from loguru import logger
 
 THISPATH = os.path.dirname(os.path.realpath(__file__))
@@ -68,6 +72,7 @@ class ADB(object):
         self.connect()
         self._abi_version = self.abi_version()
         self._sdk_version = self.sdk_version()
+        self._display_info = []  # 需要通过minicap模块获取
 
     @staticmethod
     def builtin_adb_path() -> str:
@@ -85,7 +90,7 @@ class ADB(object):
             del os.environ["ANDROID_HOME"]
         return adb_path
 
-    def _set_cmd_options(self, host : str, port : int):
+    def _set_cmd_options(self, host: str, port: int):
         """
         设置adb服务器
         Args:
@@ -128,14 +133,17 @@ class ADB(object):
         Returns:
             subprocess.Popen
         """
+        cmds = split_cmd(cmds)
         if devices:
             if not self.device_id:
                 raise logger.error('please set device_id first')
             cmd_options = self.cmd_options + ['-s', self.device_id]
+            logger.debug('adb -s {} {}'.format(self.device_id, " ".join(cmds)))
         else:
             cmd_options = self.cmd_options
-        cmds = cmd_options + split_cmd(cmds)
-        logger.debug('adb -s %s' % " ".join(cmds[2:]))
+            logger.debug('adb %s' % " ".join(cmds))
+
+        cmds = cmd_options + cmds
         proc = subprocess.Popen(
             cmds,
             stdin=subprocess.PIPE,
@@ -198,7 +206,7 @@ class ADB(object):
 
         if proc.returncode > 0:
             # adb error
-            raise logger.error("adb connection error {stdout} {stderr}".format(stderr=stderr, stdout=stdout))
+            raise logger.error("adb connection{stdout} {stderr}".format(stdout=stdout, stderr=stderr))
         return stdout
 
     def devices(self, state: bool = None):
@@ -255,7 +263,7 @@ class ADB(object):
         if not ensure_unicode:
             return stdout
         try:
-            return stdout.decode(self.SHELL_ENCODING).rstrip('\r\n')
+            return stdout.decode(self.SHELL_ENCODING)
         except UnicodeDecodeError:
             logger.error('shell output decode {} fail. repr={}'.format(self.SHELL_ENCODING, repr(stdout)))
             return str(repr(stdout))
@@ -286,17 +294,19 @@ class ADB(object):
             else:
                 return out
 
-    def forward(self, local, remote, no_rebind=True):
+    def forward(self, local: str, remote: str, no_rebind: bool = True):
         """
-        运行adb forward
-        :param local:
-            要转发的本地端口
-        :param remote:
-            要与local绑定的设备端口
+        command adb forward
+
+        Args:
+            local: 要转发的本地端口 tcp:<local>
+
+            remote: 要与local绑定的设备端口 localabstract:{remote}"`
         :return:
             None
         """
-        if not self._local_in_forwards(local):
+        is_use, index = self._local_in_forwards(local, remote)
+        if not is_use:
             cmds = ['forward']
             if no_rebind:
                 cmds += ['--no-rebind']
@@ -304,11 +314,13 @@ class ADB(object):
             self._forward_local_using.append({'local': local, 'remote': remote})
             logger.debug('forward {} {}'.format(local, remote))
         else:
-            logger.debug('{} {} has been forward'.format(local, remote))
+            logger.debug('{} {} has been forward'.format(self._forward_local_using[index]['local'],
+                                                         self._forward_local_using[index]['remote']))
 
     def get_forwards(self) -> list:
         """
-        运行 adb forwar --list获取端口占用列表
+        command adb forward --list
+
         :return:
             返回一个包含占用信息的列表,每个包含键值local和remote
         """
@@ -325,17 +337,55 @@ class ADB(object):
             l.append({'local': local, 'remote': remote})
         return l
 
-    def _local_in_forwards(self, local) -> bool:
+    def get_available_forward_local(self) -> int:
+        """
+        获取一个可用端口
+        :return:
+            port
+        """
+        sock = socket.socket()
+        port = random.randint(11111, 20000)
+        result = False
+        try:
+            sock.bind(('127.0.0.1', port))
+            result = True
+            # logger.debug('port:{} can use'.format(port))
+        except:
+            logger.debug('port:{} is in use'.format(port))
+        sock.close()
+        if not result:
+            return self.get_available_forward_local()
+        return port
+
+    def set_forward(self, remote: str):
+        """
+        通过get_available_forward_local获取可用端口,并与remote绑定
+
+        Args:
+            remote: 要与local绑定的设备端口 localabstract:{remote}"
+
+        :return:
+            None
+        """
+        localport = self.get_available_forward_local()
+        self.forward('tcp:%s' % localport, remote)
+
+    def _local_in_forwards(self, local: str = None, remote: str = None) -> bool:
         """
         检查local是否已经启用
+
         :return:
-            bool
+            bool, if True return index in _forward_local_using
         """
         l = self.get_forwards()
         for i in range(len(l)):
-            if l[i]['local'] == local:
-                return True, i
-        return False
+            if local:
+                if l[i]['local'] == local:
+                    return True, i
+            if remote:
+                if l[i]['remote'] == remote:
+                    return True, i
+        return False, -1
 
     def remove_forward(self, local=None):
         """
@@ -382,20 +432,36 @@ class ADB(object):
     def abi_version(self):
         """ get abi (application binary interface) """
         abi = self.raw_shell(['getprop', 'ro.product.cpu.abi'])
-        logger.info('device {} abi is {}'.format(self.device_id, abi))
+        logger.info('device {} abi is {}'.format(self.device_id, abi).rstrip('\r\n'))
         return abi
 
     def sdk_version(self):
         """ get sdk version """
         sdk = self.raw_shell(['getprop', 'ro.build.version.sdk'])
-        logger.info('device {} sdk is {}'.format(self.device_id, sdk))
+        logger.info('device {} sdk is {}'.format(self.device_id, sdk).rstrip('\r\n'))
         return sdk
+
+    def check_file(self, path: str, name: str) -> bool:
+        """
+        command adb shell find 'name' in the 'path'
+
+        Args:
+            path: 在设备上的路径
+
+            name: 需要检查的文件
+        :return:
+            bool
+        """
+        return bool(self.raw_shell(['find', path, '-name', name]))
 
 
 class _Minicap(ADB):
-
+    HOME = '/data/local/tmp'
     MNC_HOME = '/data/local/tmp/minicap'
     MNC_SO_HOME = '/data/local/tmp/minicap.so'
+    MNC_CMD = 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap'
+    MNC_CAP_PATH = 'temp.png'
+    MNC_PORT = 0
 
     def _push_target_mnc(self):
         """ push specific minicap """
@@ -419,10 +485,132 @@ class _Minicap(ADB):
 
     def _is_mnc_install(self):
         """
-        检查minicap和minicap.so是否安装
+        check if minicap and minicap.so installed
+
         :return:
             None
         """
+        return self.check_file(self.HOME, 'minicap') and self.check_file(self.HOME, 'minicap.so')
+
+    def set_minicap_port(self):
+        """
+        command foward to minicap
+        :return:
+        """
+        self.set_forward('localabstract:minicap')
+        index = self._local_in_forwards(remote='localabstract:minicap')
+        self.MNC_PORT = int(re.compile(r'tcp:(\d+)').findall(self._forward_local_using[index[1]]['local'])[0])
+
+    def get_display_info(self):
+        """
+        command adb shell minicap -i
+        :return:
+            display information
+        """
+        display_info = self.raw_shell([self.MNC_CMD, '-i'])
+        match = re.compile(r'({.*})', re.DOTALL).search(display_info)
+        display_info = match.group(0) if match else display_info
+        display_info = json.loads(display_info)
+        display_info["orientation"] = display_info["rotation"] / 90
+        # adb获取分辨率
+        wm_size = self.raw_shell(['wm', 'size'])
+        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
+        if len(wm_size) > 0:
+            display_info['physical_width'] = display_info['width']
+            display_info['physical_height'] = display_info['height']
+            display_info['width'] = int(wm_size[0][0])
+            display_info['height'] = int(wm_size[0][1])
+        # adb方式获取DPI
+        wm_dpi = self.raw_shell(['wm', 'density'])
+        wm_dpi = re.findall(r'Physical density: (\d+)\r', wm_dpi)
+        if len(wm_dpi) > 0:
+            display_info['dpi'] = int(wm_dpi[0])
+        logger.debug('display_info {}', display_info)
+        self._display_info = display_info
+        return display_info
+
+    def start_mnc_server(self):
+        """
+        command adb shell {self.MNC_CMD} -P 1920x1080@1920x1080/0 开启minicap服务
+        :return:
+            None
+        """
+        display_info = self.get_display_info()
+        self.start_shell([self.MNC_CMD, '-P', '%dx%d@%dx%d/%d' % (display_info['width'], display_info['height'],
+                                                                  display_info['width'], display_info['height'],
+                                                                  display_info['rotation'])])
+        time.sleep(1)
+
+    def screencap(self):
+        """
+        通过socket读取minicap的图片数据,并且通过cv2生成图片
+        :return:
+            cv2.img
+        """
+        readBannerBytes = 0
+        bannerLength = 2
+        readFrameBytes = 0
+        frameBodyLengthRemaining = 0
+        frameBody = ''
+        banner = {
+            'version': 0,
+            'length': 0,
+            'pid': 0,
+            'realWidth': 0,
+            'realHeight': 0,
+            'virtualWidth': 0,
+            'virtualHeight': 0,
+            'orientation': 0,
+            'quirks': 0
+        }
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect(('localhost', self.MNC_PORT))
+        self.start_shell([self.MNC_CMD, "-n 'minicap' -s"])
+        width, height = self._display_info['width'], self._display_info['height']
+        while True:
+            chunk = client_socket.recv(36000)  # 调大可用加快速度,但是24000以上基本就没有差距了
+            if len(chunk) == 0:
+                continue
+
+            cursor = 0
+            while cursor < len(chunk):
+                if (readBannerBytes < bannerLength):
+                    if readBannerBytes == 0:
+                        banner['version'] = int(hex(chunk[cursor]), 16)
+                    elif readBannerBytes == 1:
+                        banner['length'] = bannerLength = int(hex(chunk[cursor]), 16)
+                    elif readBannerBytes >= 2 and readBannerBytes <= 5:
+                        banner['pid'] = int(hex(chunk[cursor]), 16)
+                    elif readBannerBytes == 23:
+                        banner['quirks'] = int(hex(chunk[cursor]), 16)
+
+                    cursor += 1
+                    readBannerBytes += 1
+
+
+                elif readFrameBytes < 4:
+                    frameBodyLengthRemaining += (int(hex(chunk[cursor]), 16) << (readFrameBytes * 8))
+                    cursor += 1
+                    readFrameBytes += 1
+
+                else:
+                    # if this chunk has data of next image
+                    if len(chunk) - cursor >= frameBodyLengthRemaining:
+                        frameBody = frameBody + chunk[cursor:(cursor + frameBodyLengthRemaining)]
+                        if hex(frameBody[0]) != '0xff' or hex(frameBody[1]) != '0xd8':
+                            exit()
+                        img = np.array(bytearray(frameBody))
+                        img = cv2.imdecode(img, 1)
+                        img = cv2.resize(img, (width, height))
+                        cv2.imwrite(self.MNC_CAP_PATH, img)
+                        client_socket.close()
+                        return img
+                    else:
+                        # else this chunk is still for the current image
+                        frameBody = bytes(list(frameBody) + list(chunk[cursor:len(chunk)]))
+                        frameBodyLengthRemaining -= (len(chunk) - cursor)
+                        readFrameBytes += len(chunk) - cursor
+                        cursor = len(chunk)
 
 
 class Device(_Minicap):
@@ -431,4 +619,3 @@ class Device(_Minicap):
 
 def connect(device_id=None, adb_path=None, host='127.0.0.1', port=5037):
     return Device(device_id, adb_path, host, port)
-
