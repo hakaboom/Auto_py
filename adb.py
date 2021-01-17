@@ -39,6 +39,25 @@ def split_cmd(cmds):
     return cmds.split() if isinstance(cmds, str) else list(cmds)
 
 
+def split_process_status(out):
+    l = []
+    for line in out.splitlines():
+        line = line + '\t'
+        line = re.compile("(\S+)").findall(line)
+        if len(line) > 8:
+            l.append({
+                'User': line[0],
+                'PID': line[1],
+                'PPID': line[2],
+                'VSIZE': line[3],
+                'RSS': line[4],
+                'WCHAN': line[6],
+                'PC': line[7],
+                'NAME': line[8]
+            })
+    return len(l) > 0 and l or None
+
+
 def get_std_encoding(stream):
     return getattr(stream, "encoding", None) or sys.getfilesystemencoding()
 
@@ -203,10 +222,10 @@ class ADB(object):
         if ensure_unicode:
             stdout = stdout.decode(get_std_encoding(stdout))
             stderr = stderr.decode(get_std_encoding(stderr))
-
+        print(stdout)
         if proc.returncode > 0:
             # adb error
-            raise logger.error("adb connection{stdout} {stderr}".format(stdout=stdout, stderr=stderr))
+            logger.error("adb connection {stdout} {stderr}".format(stdout=stdout, stderr=stderr))
         return stdout
 
     def devices(self, state: bool = None):
@@ -223,6 +242,7 @@ class ADB(object):
         # self.start_server()
         output = self.cmd("devices", devices=False)
         for line in output.splitlines():
+            print(line)
             line = line.strip()
             if not line or not patten.match(line):
                 continue
@@ -453,6 +473,30 @@ class ADB(object):
             bool
         """
         return bool(self.raw_shell(['find', path, '-name', name]))
+
+    def get_process_status(self, pid: int = None, name: str = None) -> list:
+        """
+        adb shell ps
+        :return:
+            list
+        """
+        if pid:
+            out = self.raw_shell(['ps -x', str(pid)])
+        elif name:
+            out = self.raw_shell("ps | grep \"{}\"".format(name))
+        else:
+            out = self.raw_shell('ps')
+        return split_process_status(out)
+
+    def kill_process(self, pid: int):
+        """
+        command adb shell kill [pid]
+        :param pid: 需要杀死的进程pid
+        :return:
+            None
+        """
+        # if self.get_process_status(pid=pid):
+        # self.raw_shell(['kill', str(pid)])
 
 
 class _Minicap(ADB):

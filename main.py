@@ -22,6 +22,8 @@ from loguru import logger
 
 
 a = connect(device_id='emulator-5554')
-a.set_minicap_port()
-a.start_mnc_server()
-a.screencap()
+# a.set_minicap_port()
+# a.start_mnc_server()
+# a.screencap()
+print(a.get_process_status(name='minicap'))
+# a.kill_process(2266)
