@@ -46,14 +46,14 @@ def split_process_status(out):
         line = re.compile("(\S+)").findall(line)
         if len(line) > 8:
             l.append({
-                'User': line[0],
-                'PID': line[1],
-                'PPID': line[2],
-                'VSIZE': line[3],
-                'RSS': line[4],
-                'WCHAN': line[6],
-                'PC': line[7],
-                'NAME': line[8]
+                'User': line[0],  # 所属用户
+                'PID': line[1],  # 进程 ID
+                'PPID': line[2],  # 父进程 ID
+                'VSIZE': line[3],  # 进程的虚拟内存大小，以KB为单位
+                'RSS': line[4],  # 进程实际占用的内存大小，以KB为单位
+                'WCHAN': line[5],  # 进程正在睡眠的内核函数名称；
+                'PC': line[6],  # 计算机中提供要从“存储器”中取出的下一个指令地址的寄存器
+                'NAME': line[8]  # 进程名
             })
     return len(l) > 0 and l or None
 
@@ -192,7 +192,7 @@ class ADB(object):
         close_pipe(proc.stdout)
         close_pipe(proc.stderr)
 
-    def cmd(self, cmds: Union[list, str], devices: bool = True, ensure_unicode: bool = True, timeout: int = None):
+    def cmd(self, cmds: Union[list, str], devices: bool = True, ensure_unicode: bool = True, timeout: int = None, skip_error: bool = False):
         """
         用cmds创建adb命令,并且返回stdout
 
@@ -201,6 +201,7 @@ class ADB(object):
             devices: 如果为True,则需要指定device-id,命令中会传入-s
             ensure_unicode: 是否解码stdout,stderr
             timeout: 设置命令超时时间
+            skip_error: 是否跳过报错
 
         Returns:
             返回命令结果stdout
@@ -222,10 +223,13 @@ class ADB(object):
         if ensure_unicode:
             stdout = stdout.decode(get_std_encoding(stdout))
             stderr = stderr.decode(get_std_encoding(stderr))
-        print(stdout)
+
         if proc.returncode > 0:
             # adb error
             logger.error("adb connection {stdout} {stderr}".format(stdout=stdout, stderr=stderr))
+            if not skip_error:
+                raise AdbError(stdout,stderr)
+
         return stdout
 
     def devices(self, state: bool = None):
@@ -242,7 +246,6 @@ class ADB(object):
         # self.start_server()
         output = self.cmd("devices", devices=False)
         for line in output.splitlines():
-            print(line)
             line = line.strip()
             if not line or not patten.match(line):
                 continue
@@ -277,9 +280,9 @@ class ADB(object):
         cmds = ['shell'] + split_cmd(cmds)
         return self.start_cmd(cmds)
 
-    def raw_shell(self, cmds: Union[list, str], ensure_unicode: bool = True):
+    def raw_shell(self, cmds: Union[list, str], ensure_unicode: bool = True, skip_error: bool = False):
         cmds = ['shell'] + split_cmd(cmds)
-        stdout = self.cmd(cmds, ensure_unicode=False)
+        stdout = self.cmd(cmds, ensure_unicode=False, skip_error=skip_error)
         if not ensure_unicode:
             return stdout
         try:
@@ -477,26 +480,48 @@ class ADB(object):
     def get_process_status(self, pid: int = None, name: str = None) -> list:
         """
         adb shell ps
+
+        Args:
+            pid: 按照pid寻找
+            name: 通过grep寻找匹配的name(并不是精准寻找,只要有匹配的项都会返回)
         :return:
-            list
+            list 每一项都包含了ps信息
         """
         if pid:
-            out = self.raw_shell(['ps -x', str(pid)])
+            shell = ['ps -x', str(pid)]
         elif name:
-            out = self.raw_shell("ps | grep \"{}\"".format(name))
+            shell = "ps | grep \"{}\"".format(name)
         else:
-            out = self.raw_shell('ps')
+            shell = 'ps'
+        out = self.raw_shell(shell, skip_error=True)
         return split_process_status(out)
 
-    def kill_process(self, pid: int):
+    def kill_process(self, pid: int = None, name: str = None):
         """
         command adb shell kill [pid]
         :param pid: 需要杀死的进程pid
         :return:
             None
         """
-        # if self.get_process_status(pid=pid):
-        # self.raw_shell(['kill', str(pid)])
+        if pid:
+            out = self.get_process_status(pid=pid)
+            if out:
+                pid = out[0]['PID']
+            else:
+                logger.error('pid：{} is not started'.format(str(pid)))
+                return False
+        elif name:
+            out = self.get_process_status(name=name)
+            if out:
+                if len(out)>1: logger.info('匹配到多个进程')
+                pid = out[0]['PID']
+            else:
+                logger.info('NAME: {} is not started'.format(name))
+                return False
+        print(self.raw_shell(['kill', str(pid)]))
+
+    def install_app(self, filepath, replace=False):
+        pass
 
 
 class _Minicap(ADB):
@@ -509,7 +534,7 @@ class _Minicap(ADB):
 
     def _push_target_mnc(self):
         """ push specific minicap """
-        mnc_path = "./android/{}/bin/minicap".format(self._abi_version)
+        mnc_path = "./android/{}/bin/minicap".format(self._abi_version.rstrip())
         # logger.debug('target minicap path: ' + mnc_path)
 
         # push and grant
@@ -519,9 +544,8 @@ class _Minicap(ADB):
 
     def _push_target_mnc_so(self):
         """ push specific minicap.so (they should work together) """
-        mnc_so_path = './android/{}/lib/android-{}/minicap.so'.format(self._abi_version, self._sdk_version)
+        mnc_so_path = './android/{}/lib/android-{}/minicap.so'.format(self._abi_version.rstrip(), self._sdk_version.rstrip())
         # logger.debug('target minicap.so url: ' + mnc_so_path)
-
         # push and grant
         self.start_cmd(['push', mnc_so_path, self.MNC_SO_HOME])
         self.start_shell(['chmod', '777', self.MNC_SO_HOME])
@@ -534,13 +558,19 @@ class _Minicap(ADB):
         :return:
             None
         """
-        return self.check_file(self.HOME, 'minicap') and self.check_file(self.HOME, 'minicap.so')
+        if not self.check_file(self.HOME, 'minicap'):
+            logger.error('minicap is not install in {}'.format(self.device_id))
+            self._push_target_mnc()
+        if not self.check_file(self.HOME, 'minicap.so'):
+            logger.error('minicap.so is not install in {}'.format(self.device_id))
+            self._push_target_mnc_so()
 
     def set_minicap_port(self):
         """
         command foward to minicap
         :return:
         """
+        self._is_mnc_install()
         self.set_forward('localabstract:minicap')
         index = self._local_in_forwards(remote='localabstract:minicap')
         self.MNC_PORT = int(re.compile(r'tcp:(\d+)').findall(self._forward_local_using[index[1]]['local'])[0])
@@ -570,6 +600,8 @@ class _Minicap(ADB):
         if len(wm_dpi) > 0:
             display_info['dpi'] = int(wm_dpi[0])
         logger.debug('display_info {}', display_info)
+        # if display_info['height'] > display_info['width']:
+        #     display_info['height'],display_info['width'] = display_info['width'], display_info['height']
         self._display_info = display_info
         return display_info
 
@@ -583,6 +615,7 @@ class _Minicap(ADB):
         self.start_shell([self.MNC_CMD, '-P', '%dx%d@%dx%d/%d' % (display_info['width'], display_info['height'],
                                                                   display_info['width'], display_info['height'],
                                                                   display_info['rotation'])])
+        self.MNC_CAP_PATH = 'temp_{}.png'.format(self.device_id)
         time.sleep(1)
 
     def screencap(self):

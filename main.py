@@ -1,29 +1,34 @@
 # -*- coding: utf-8 -*-
 import time
-import timeit
-import socket
-import sys
-import os
-import random
 import threading
-import platform
-import subprocess
-from queue import Queue
-from typing import Tuple,List
-import re
-
-import cv2
-import numpy as np
-from Minicap import connect
-
 from adb import connect
-from loguru import logger
+
+def main1():
+    a = connect(device_id='emulator-5562')
+    a.set_minicap_port()
+    a.start_mnc_server()
+    a.screencap()
+
+def main2():
+    a = connect(device_id='emulator-5554')
+    a.set_minicap_port()
+    a.start_mnc_server()
+    a.screencap()
 
 
-
-a = connect(device_id='emulator-5554')
-# a.set_minicap_port()
-# a.start_mnc_server()
-# a.screencap()
-print(a.get_process_status(name='minicap'))
-# a.kill_process(2266)
+class myThread (threading.Thread):
+    def __init__(self, threadID, name, counter):
+        threading.Thread.__init__(self)
+        self.threadID = threadID
+        self.name = name
+        self.counter = counter
+    def run(self):
+        print ("开始线程：" + self.name)
+        globals()['main' + str(self.threadID)]()
+        print ("退出线程：" + self.name)
+#
+# thread1 = myThread(1, "Thread-1", 1)
+# thread2 = myThread(2, "Thread-2", 2)
+# thread1.start()
+# thread2.start()
+main2()
