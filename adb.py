@@ -10,7 +10,7 @@ import warnings
 import subprocess
 import json
 import threading
-from typing import Union
+from typing import Union, Tuple
 
 import cv2
 import numpy as np
@@ -86,7 +86,6 @@ class ADB(object):
         self.device_id = device_id
         self.adb_path = adb_path or self.builtin_adb_path()
         self._set_cmd_options(host, port)
-        self._sdk_version = 0  # sdk版本
         self._forward_local_using = self.get_forwards()  # 已经使用的端口
         self.connect()
         self._abi_version = self.abi_version()
@@ -157,10 +156,10 @@ class ADB(object):
             if not self.device_id:
                 raise logger.error('please set device_id first')
             cmd_options = self.cmd_options + ['-s', self.device_id]
-            logger.debug('adb -s {} {}'.format(self.device_id, " ".join(cmds)))
+            logger.debug('adb -s {} {}', self.device_id, " ".join(cmds))
         else:
             cmd_options = self.cmd_options
-            logger.debug('adb %s' % " ".join(cmds))
+            logger.debug('adb {}', " ".join(cmds))
 
         cmds = cmd_options + cmds
         proc = subprocess.Popen(
@@ -192,7 +191,8 @@ class ADB(object):
         close_pipe(proc.stdout)
         close_pipe(proc.stderr)
 
-    def cmd(self, cmds: Union[list, str], devices: bool = True, ensure_unicode: bool = True, timeout: int = None, skip_error: bool = False):
+    def cmd(self, cmds: Union[list, str], devices: bool = True, ensure_unicode: bool = True, timeout: int = None,
+            skip_error: bool = False):
         """
         用cmds创建adb命令,并且返回stdout
 
@@ -213,9 +213,9 @@ class ADB(object):
             except subprocess.TimeoutExpired:
                 proc.kill()
                 stdout, stderr = proc.communicate()
-                logger.error("Command {cmd} time out after {timeout} seconds: stdout['{stdout}'], stderr['{stderr}']".
-                             format(cmd=proc.args, timeout=timeout,
-                                    stdout=stdout, stderr=stderr))
+                logger.error("Command {cmd} time out after {timeout} seconds: stdout['{stdout}'], stderr['{stderr}']",
+                             cmd=proc.args, timeout=timeout,
+                             stdout=stdout, stderr=stderr)
                 raise
         else:
             stdout, stderr = proc.communicate()
@@ -226,9 +226,9 @@ class ADB(object):
 
         if proc.returncode > 0:
             # adb error
-            logger.error("adb connection {stdout} {stderr}".format(stdout=stdout, stderr=stderr))
+            logger.error("adb connection {stdout} {stderr}", stdout=stdout, stderr=stderr)
             if not skip_error:
-                raise AdbError(stdout,stderr)
+                raise AdbError(stdout, stderr)
 
         return stdout
 
@@ -288,12 +288,11 @@ class ADB(object):
         try:
             return stdout.decode(self.SHELL_ENCODING)
         except UnicodeDecodeError:
-            logger.error('shell output decode {} fail. repr={}'.format(self.SHELL_ENCODING, repr(stdout)))
+            logger.error('shell output decode {} fail. repr={}', self.SHELL_ENCODING, repr(stdout))
             return str(repr(stdout))
 
     def shell(self, cmd: Union[list, str]):
-
-        if self.sdk_version < 25:
+        if self._sdk_version < 25:
             # sdk_version < 25, adb shell 不返回错误
             # https://issuetracker.google.com/issues/36908392
             cmd = split_cmd(cmd) + [";", "echo", "---$?---"]
@@ -313,7 +312,7 @@ class ADB(object):
             try:
                 out = self.raw_shell(cmd)
             except AdbError as err:
-                raise logger.error("stdout={},stderr={}".format(err.stdout, err.stderr))
+                raise logger.error("stdout={},stderr={}", err.stdout, err.stderr)
             else:
                 return out
 
@@ -335,10 +334,10 @@ class ADB(object):
                 cmds += ['--no-rebind']
             self.cmd(cmds + [local, remote])
             self._forward_local_using.append({'local': local, 'remote': remote})
-            logger.debug('forward {} {}'.format(local, remote))
+            logger.debug('forward {} {}', local, remote)
         else:
-            logger.debug('{} {} has been forward'.format(self._forward_local_using[index]['local'],
-                                                         self._forward_local_using[index]['remote']))
+            logger.info('{} {} has been forward', self._forward_local_using[index]['local'],
+                        self._forward_local_using[index]['remote'])
 
     def get_forwards(self) -> list:
         """
@@ -393,7 +392,7 @@ class ADB(object):
         localport = self.get_available_forward_local()
         self.forward('tcp:%s' % localport, remote)
 
-    def _local_in_forwards(self, local: str = None, remote: str = None) -> bool:
+    def _local_in_forwards(self, local: str = None, remote: str = None) -> Tuple[bool, int]:
         """
         检查local是否已经启用
 
@@ -408,7 +407,7 @@ class ADB(object):
             if remote:
                 if l[i]['remote'] == remote:
                     return True, i
-        return False, -1
+        return False, None
 
     def remove_forward(self, local=None):
         """
@@ -499,6 +498,7 @@ class ADB(object):
     def kill_process(self, pid: int = None, name: str = None):
         """
         command adb shell kill [pid]
+        :param name: 需要杀死的进程名
         :param pid: 需要杀死的进程pid
         :return:
             None
@@ -508,29 +508,50 @@ class ADB(object):
             if out:
                 pid = out[0]['PID']
             else:
-                logger.error('pid：{} is not started'.format(str(pid)))
+                logger.error('pid：{} is not started', str(pid))
                 return False
         elif name:
             out = self.get_process_status(name=name)
             if out:
-                if len(out)>1: logger.info('匹配到多个进程')
+                if len(out) > 1:
+                    logger.info('匹配到多个进程')
                 pid = out[0]['PID']
             else:
-                logger.info('NAME: {} is not started'.format(name))
+                logger.info('NAME: {} is not started', name)
                 return False
-        print(self.raw_shell(['kill', str(pid)]))
+        self.start_shell(['kill', str(pid)])
 
     def install_app(self, filepath, replace=False):
         pass
 
 
 class _Minicap(ADB):
+    """minicap模块"""
     HOME = '/data/local/tmp'
     MNC_HOME = '/data/local/tmp/minicap'
     MNC_SO_HOME = '/data/local/tmp/minicap.so'
     MNC_CMD = 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap'
     MNC_CAP_PATH = 'temp.png'
+    MNC_LOCAL_NAME = 'minicap'
     MNC_PORT = 0
+
+    # 所有参数都要加上device_id
+
+    def set_minicap_port(self):
+        """
+        command foward to minicap
+        :return:
+        """
+        self._is_mnc_install()
+        self.MNC_LOCAL_NAME = 'minicap_%s' % self.device_id
+        self.MNC_CAP_PATH = 'temp_%s.png' % self.device_id
+
+        self.set_forward('localabstract:%s' % self.MNC_LOCAL_NAME)
+        index = self._local_in_forwards(remote='localabstract:%s' % self.MNC_LOCAL_NAME)
+        if not index[0]:
+            raise logger.error('minicap port not set: local_name{}', self.MNC_LOCAL_NAME)
+
+        self.MNC_PORT = int(re.compile(r'tcp:(\d+)').findall(self._forward_local_using[index[1]]['local'])[0])
 
     def _push_target_mnc(self):
         """ push specific minicap """
@@ -540,16 +561,17 @@ class _Minicap(ADB):
         # push and grant
         self.start_cmd(['push', mnc_path, self.MNC_HOME])
         self.start_shell(['chmod', '777', self.MNC_HOME])
-        logger.debug('minicap installed in {}'.format(self.MNC_HOME))
+        logger.debug('minicap installed in {}', self.MNC_HOME)
 
     def _push_target_mnc_so(self):
         """ push specific minicap.so (they should work together) """
-        mnc_so_path = './android/{}/lib/android-{}/minicap.so'.format(self._abi_version.rstrip(), self._sdk_version.rstrip())
+        mnc_so_path = './android/{}/lib/android-{}/minicap.so'.format(self._abi_version.rstrip(),
+                                                                      self._sdk_version.rstrip())
         # logger.debug('target minicap.so url: ' + mnc_so_path)
         # push and grant
         self.start_cmd(['push', mnc_so_path, self.MNC_SO_HOME])
         self.start_shell(['chmod', '777', self.MNC_SO_HOME])
-        logger.debug('minicap.so installed in {}'.format(self.MNC_SO_HOME))
+        logger.debug('minicap.so installed in {}', self.MNC_SO_HOME)
 
     def _is_mnc_install(self):
         """
@@ -559,21 +581,12 @@ class _Minicap(ADB):
             None
         """
         if not self.check_file(self.HOME, 'minicap'):
-            logger.error('minicap is not install in {}'.format(self.device_id))
+            logger.error('minicap is not install in {}', self.device_id)
             self._push_target_mnc()
         if not self.check_file(self.HOME, 'minicap.so'):
-            logger.error('minicap.so is not install in {}'.format(self.device_id))
+            logger.error('minicap.so is not install in {}', self.device_id)
             self._push_target_mnc_so()
-
-    def set_minicap_port(self):
-        """
-        command foward to minicap
-        :return:
-        """
-        self._is_mnc_install()
-        self.set_forward('localabstract:minicap')
-        index = self._local_in_forwards(remote='localabstract:minicap')
-        self.MNC_PORT = int(re.compile(r'tcp:(\d+)').findall(self._forward_local_using[index[1]]['local'])[0])
+        logger.info('minicap and minicap.so is install')
 
     def get_display_info(self):
         """
@@ -612,10 +625,11 @@ class _Minicap(ADB):
             None
         """
         display_info = self.get_display_info()
-        self.start_shell([self.MNC_CMD, '-P', '%dx%d@%dx%d/%d' % (display_info['width'], display_info['height'],
-                                                                  display_info['width'], display_info['height'],
-                                                                  display_info['rotation'])])
-        self.MNC_CAP_PATH = 'temp_{}.png'.format(self.device_id)
+        self.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
+                          '%dx%d@%dx%d/%d 2>&1' % (display_info['width'], display_info['height'],
+                                                   display_info['width'], display_info['height'],
+                                                   display_info['rotation'])])
+        logger.info('%s minicap server is running' % self.device_id)
         time.sleep(1)
 
     def screencap(self):
@@ -642,28 +656,27 @@ class _Minicap(ADB):
         }
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.connect(('localhost', self.MNC_PORT))
-        self.start_shell([self.MNC_CMD, "-n 'minicap' -s"])
+        self.start_shell([self.MNC_CMD, "-n '{}' -s 2>&1".format(self.MNC_LOCAL_NAME)])
         width, height = self._display_info['width'], self._display_info['height']
         while True:
-            chunk = client_socket.recv(36000)  # 调大可用加快速度,但是24000以上基本就没有差距了
+            chunk = client_socket.recv(24000)  # 调大可用加快速度,但是24000以上基本就没有差距了
             if len(chunk) == 0:
                 continue
 
             cursor = 0
             while cursor < len(chunk):
-                if (readBannerBytes < bannerLength):
+                if readBannerBytes < bannerLength:
                     if readBannerBytes == 0:
                         banner['version'] = int(hex(chunk[cursor]), 16)
                     elif readBannerBytes == 1:
                         banner['length'] = bannerLength = int(hex(chunk[cursor]), 16)
-                    elif readBannerBytes >= 2 and readBannerBytes <= 5:
+                    elif 2 <= readBannerBytes <= 5:
                         banner['pid'] = int(hex(chunk[cursor]), 16)
                     elif readBannerBytes == 23:
                         banner['quirks'] = int(hex(chunk[cursor]), 16)
 
                     cursor += 1
                     readBannerBytes += 1
-
 
                 elif readFrameBytes < 4:
                     frameBodyLengthRemaining += (int(hex(chunk[cursor]), 16) << (readFrameBytes * 8))
@@ -681,6 +694,7 @@ class _Minicap(ADB):
                         img = cv2.resize(img, (width, height))
                         cv2.imwrite(self.MNC_CAP_PATH, img)
                         client_socket.close()
+                        logger.info('%s screencap' % self.device_id)
                         return img
                     else:
                         # else this chunk is still for the current image
@@ -690,7 +704,75 @@ class _Minicap(ADB):
                         cursor = len(chunk)
 
 
-class Device(_Minicap):
+def TOUCH_EVENT():
+    l = {
+        'EVENT_ID': 1,
+        'EVENT_PATH': '',
+        'INDEX_LIST': {
+            'index': [False, False, False, False, False, False, False, False, False, False],
+            'count': 0,
+        },
+    }
+
+    class _Touch(object):
+        def __getitem__(self, item):
+            if item == 'index':
+                return l['INDEX_LIST']['index']
+            if item == 'count':
+                return l['INDEX_LIST']['count']
+            if item == 'EVENT_ID' or item == 'EVENT_PATH':
+                return l[item]
+            if item == 'width' or item == 'height':
+                return l['EVENT_WINDOWSIZE'][item]
+
+        def add_eventid(self):
+            l['EVENT_ID'] += 1
+
+        def index_down(self, index: int):
+            '''手指按下调整为True,count减1'''
+            l['INDEX_LIST']['index'][index] = True
+            l['INDEX_LIST']['count'] += 1
+            # self.setCount(self['count'] + 1)
+
+        def index_up(self, index: int):
+            '''手指按下调整为True,count减1'''
+            l['INDEX_LIST']['index'][index] = False
+            l['INDEX_LIST']['count'] -= 1
+            # self.setCount(self['count'] - 1)
+
+        def set_eventPath(self, path):
+            l['EVENT_PATH'] = path
+
+        def set_count(self, num: int):
+            l['INDEX_LIST']['count'] = num
+    return _Touch()
+
+
+class _BaseClient(ADB, _Minicap):
+    """基本的控制类"""
+    TOUCH_EVENT = TOUCH_EVENT()
+
+    def touch(self):
+        """
+
+        :return:
+        """
+
+        class _Touch(object):
+            def down(self, x: int, y: int, index: int = 1):
+                """
+
+                :param x:
+                :param y:
+                :param index:
+                :return:
+                """
+
+        return _Touch()
+
+
+
+class Device(_Minicap,_BaseClient):
     pass
 
 
