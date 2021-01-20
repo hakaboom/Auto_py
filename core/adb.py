@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+import time
 import random
 import socket
 import platform
@@ -167,7 +168,6 @@ class ADB(object):
                 raise
         else:
             stdout, stderr = proc.communicate()
-
         if ensure_unicode:
             stdout = stdout.decode(get_std_encoding(stdout))
             stderr = stderr.decode(get_std_encoding(stderr))
@@ -177,7 +177,6 @@ class ADB(object):
             logger.error("adb connection {stdout} {stderr}", stdout=stdout, stderr=stderr)
             if not skip_error:
                 raise AdbError(stdout, stderr)
-
         return stdout
 
     def devices(self, state: bool = None):

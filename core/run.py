@@ -10,7 +10,7 @@ class Android(object):
         self.adb = ADB(device_id, adb_path, host, port)
         if minicap:
             self.minicap = Minicap(self.adb)
-        self.touch = Touch(self.adb)
+
 
     def screencap(self):
         return self.minicap.screencap()

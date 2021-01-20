@@ -5,7 +5,7 @@ import math
 import time
 from core.adb import ADB
 
-
+"""太慢了"""
 class Touch_event(object):
     def __init__(self, event_path: str, event_size: dict, screen_size: dict, orientation: int = 1):
         self.event_id = 1
@@ -57,12 +57,16 @@ class Touch_event(object):
 
 
 class Touch(object):
-    """基本触摸函数,通过adb操作"""
+    """
+        基本触摸函数,通过adb操作
+        函数内时间单位为ms,间隔最好不要低于50ms
+        就是使用setevent,不写注释了
+    """
     def __init__(self, adb: ADB, orientation: int = 1):
         self.adb = adb
         self.event_path = self._get_event_path()
         self.event_size = self._get_event_size()
-        self.screen_size = {'width': 1280, 'height': 720}
+        self.screen_size = {'width': 1920, 'height': 1080}
         self.Touch_event = Touch_event(event_path=self.event_path, event_size=self.event_size,
                                        screen_size=self.screen_size, orientation=orientation)
 
@@ -107,22 +111,22 @@ class Touch(object):
         self.Touch_event.add_event_id()
         self.Touch_event.index_down(index)
         t = (
-                    # 'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
-                    'sendevent {} {} {} {}'.format(eventPath, 3, 57, event_id),
-                    'sendevent {} {} {} {}'.format(eventPath, 1, 330, 1),
-                    'sendevent {} {} {} {}'.format(eventPath, 3, 53, int(x * 10)),
-                    'sendevent {} {} {} {}'.format(eventPath, 3, 54, int(y * 10)),
-                    # 'sendevent {} {} {} {}'.format(eventPath, 3, 48, 5),
-                    # 'sendevent {} {} {} {}'.format(eventPath, 3, 58, 50),
-                    'sendevent {} 0 0 0'.format(eventPath),
-                )
-        self.adb.start_shell(';'.join(t))
+                'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
+                'sendevent {} {} {} {}'.format(eventPath, 3, 57, event_id),
+                'sendevent {} {} {} {}'.format(eventPath, 1, 330, 1),
+                'sendevent {} {} {} {}'.format(eventPath, 3, 58, 2),
+                'sendevent {} {} {} {}'.format(eventPath, 3, 53, int(x * 10)),
+                'sendevent {} {} {} {}'.format(eventPath, 3, 54, int(y * 10)),
+                'sendevent {} 0 0 0'.format(eventPath),
+            )
+        self.adb.raw_shell(';'.join(t),ensure_unicode=False)
 
     def up(self, x: int, y: int, index: int = 1):
         x, y = self.Touch_event.transform(x, y)
         eventPath = self.Touch_event.event_path
+        index_count = self.Touch_event.index_count
         self.Touch_event.index_up(index)
-        if self.Touch_event.index_count > 0:
+        if index_count > 1:
             t = (
                 'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
                 'sendevent {} {} {} {}'.format(eventPath, 3, 57, -1),
@@ -135,4 +139,44 @@ class Touch(object):
                 'sendevent {} {} {} {}'.format(eventPath, 1, 330, 0),
                 'sendevent {} 0 0 0'.format(eventPath),
             )
-        self.adb.start_shell(';'.join(t))
+        self.adb.raw_shell(';'.join(t))
+
+    def click(self, x: int ,y: int, index: int = 1, duration: int = 100):
+        x, y = self.Touch_event.transform(x, y)
+        eventPath = self.Touch_event.event_path
+        event_id = self.Touch_event.event_id
+        index_count = self.Touch_event.index_count
+        self.Touch_event.add_event_id()
+        self.Touch_event.index_down(index)
+        t1 = [
+                'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
+                'sendevent {} {} {} {}'.format(eventPath, 3, 57, event_id),
+                'sendevent {} {} {} {}'.format(eventPath, 1, 330, 1),
+                'sendevent {} {} {} {}'.format(eventPath, 3, 58, 2),
+                'sendevent {} {} {} {}'.format(eventPath, 3, 53, int(x * 10)),
+                'sendevent {} {} {} {}'.format(eventPath, 3, 54, int(y * 10)),
+                'sendevent {} 0 0 0;'.format(eventPath),
+            ]
+        if index_count > 1:
+            t2 = ([
+                'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
+                'sendevent {} {} {} {}'.format(eventPath, 3, 57, -1),
+                'sendevent {} 0 0 0;'.format(eventPath),
+            ])
+        else:
+            t2 = ([
+                'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
+                'sendevent {} {} {} {}'.format(eventPath, 3, 57, -1),
+                'sendevent {} {} {} {}'.format(eventPath, 1, 330, 0),
+                'sendevent {} 0 0 0;'.format(eventPath),
+            ])
+        self.adb.raw_shell(';'.join(t1) + ';'.join(t2),ensure_unicode=False)
+
+    def long_click(self, x: int, y: int, index: int = 1, duration: int = 500):
+        self.click(x, y, index, duration)
+
+    def double_click(self, x:int, y:int, index, duration: int = 500):
+        pass
+
+    def sleep(self, duration: int = 50):
+        time.sleep(duration / 1000)
