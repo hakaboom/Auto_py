@@ -5,16 +5,19 @@ import json
 import time
 import socket
 
+
+from core.adb import ADB
+
 import cv2
 import numpy as np
 from loguru import logger
 
 
-class _Minicap(object):
+class Minicap(object):
     """minicap模块"""
 
     # 所有参数都要加上device_id
-    def __init__(self, adb):
+    def __init__(self, adb: ADB):
         """
 
         :param adb: adb instance of android device

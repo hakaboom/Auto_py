@@ -38,6 +38,7 @@ class ADB(object):
         self._forward_local_using = self.get_forwards()  # 已经使用的端口
         self.connect()
         self._display_info = []  # 需要通过minicap模块获取
+        self._sdk_version = int(self.sdk_version())
 
     @staticmethod
     def builtin_adb_path() -> str:
