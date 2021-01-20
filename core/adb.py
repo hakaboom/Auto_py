@@ -1,22 +1,20 @@
-# -*- coding: utf-8 -*-
+#! usr/bin/python
+# -*- coding:utf-8 -*-
 import os
 import re
 import sys
-import time
 import random
 import socket
 import platform
 import warnings
 import subprocess
-import json
-import threading
 from typing import Union, Tuple
 
-import cv2
-import numpy as np
+from core.utils import split_cmd, split_process_status,get_std_encoding,AdbError
+
 from loguru import logger
 
-THISPATH = os.path.dirname(os.path.realpath(__file__))
+THISPATH = os.path.dirname(os.path.realpath('static'))
 STATICPATH = os.path.join(THISPATH, "static")
 DEFAULT_ADB_PATH = {
     "Windows": os.path.join(STATICPATH, "adb", "windows", "adb.exe"),
@@ -25,55 +23,6 @@ DEFAULT_ADB_PATH = {
     "Linux-x86_64": os.path.join(STATICPATH, "adb", "linux", "adb"),
     "Linux-armv7l": os.path.join(STATICPATH, "adb", "linux_arm", "adb"),
 }
-
-
-def split_cmd(cmds):
-    """
-    Split the commands to the list for subprocess
-    Args:
-        cmds: command(s)
-    Returns:
-        array commands
-    """
-    # cmds = shlex.split(cmds)  # disable auto removing \ on windows
-    return cmds.split() if isinstance(cmds, str) else list(cmds)
-
-
-def split_process_status(out):
-    l = []
-    for line in out.splitlines():
-        line = line + '\t'
-        line = re.compile("(\S+)").findall(line)
-        if len(line) > 8:
-            l.append({
-                'User': line[0],  # 所属用户
-                'PID': line[1],  # 进程 ID
-                'PPID': line[2],  # 父进程 ID
-                'VSIZE': line[3],  # 进程的虚拟内存大小，以KB为单位
-                'RSS': line[4],  # 进程实际占用的内存大小，以KB为单位
-                'WCHAN': line[5],  # 进程正在睡眠的内核函数名称；
-                'PC': line[6],  # 计算机中提供要从“存储器”中取出的下一个指令地址的寄存器
-                'NAME': line[8]  # 进程名
-            })
-    return len(l) > 0 and l or None
-
-
-def get_std_encoding(stream):
-    return getattr(stream, "encoding", None) or sys.getfilesystemencoding()
-
-
-class AdbError(Exception):
-    """
-        This is AdbError BaseError
-        When ADB have something wrong
-    """
-
-    def __init__(self, stdout, stderr):
-        self.stdout = stdout
-        self.stderr = stderr
-
-    def __str__(self):
-        return "stdout[%s] stderr[%s]" % (self.stdout, self.stderr)
 
 
 class ADB(object):
@@ -88,8 +37,6 @@ class ADB(object):
         self._set_cmd_options(host, port)
         self._forward_local_using = self.get_forwards()  # 已经使用的端口
         self.connect()
-        self._abi_version = self.abi_version()
-        self._sdk_version = self.sdk_version()
         self._display_info = []  # 需要通过minicap模块获取
 
     @staticmethod
@@ -175,10 +122,10 @@ class ADB(object):
     def close_proc_pipe(proc: subprocess.Popen) -> None:
         """
         关闭stdin,stdout,stderr流对象
-        
+
         Args: 
             proc: 选择关闭的Popen对象
-            
+
         Returns:
              None 
         """""
@@ -524,257 +471,5 @@ class ADB(object):
     def install_app(self, filepath, replace=False):
         pass
 
-
-class _Minicap(ADB):
-    """minicap模块"""
-    HOME = '/data/local/tmp'
-    MNC_HOME = '/data/local/tmp/minicap'
-    MNC_SO_HOME = '/data/local/tmp/minicap.so'
-    MNC_CMD = 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap'
-    MNC_CAP_PATH = 'temp.png'
-    MNC_LOCAL_NAME = 'minicap'
-    MNC_PORT = 0
-
-    # 所有参数都要加上device_id
-
-    def set_minicap_port(self):
-        """
-        command foward to minicap
-        :return:
-        """
-        self._is_mnc_install()
-        self.MNC_LOCAL_NAME = 'minicap_%s' % self.device_id
-        self.MNC_CAP_PATH = 'temp_%s.png' % self.device_id
-
-        self.set_forward('localabstract:%s' % self.MNC_LOCAL_NAME)
-        index = self._local_in_forwards(remote='localabstract:%s' % self.MNC_LOCAL_NAME)
-        if not index[0]:
-            raise logger.error('minicap port not set: local_name{}', self.MNC_LOCAL_NAME)
-
-        self.MNC_PORT = int(re.compile(r'tcp:(\d+)').findall(self._forward_local_using[index[1]]['local'])[0])
-
-    def _push_target_mnc(self):
-        """ push specific minicap """
-        mnc_path = "./android/{}/bin/minicap".format(self._abi_version.rstrip())
-        # logger.debug('target minicap path: ' + mnc_path)
-
-        # push and grant
-        self.start_cmd(['push', mnc_path, self.MNC_HOME])
-        self.start_shell(['chmod', '777', self.MNC_HOME])
-        logger.debug('minicap installed in {}', self.MNC_HOME)
-
-    def _push_target_mnc_so(self):
-        """ push specific minicap.so (they should work together) """
-        mnc_so_path = './android/{}/lib/android-{}/minicap.so'.format(self._abi_version.rstrip(),
-                                                                      self._sdk_version.rstrip())
-        # logger.debug('target minicap.so url: ' + mnc_so_path)
-        # push and grant
-        self.start_cmd(['push', mnc_so_path, self.MNC_SO_HOME])
-        self.start_shell(['chmod', '777', self.MNC_SO_HOME])
-        logger.debug('minicap.so installed in {}', self.MNC_SO_HOME)
-
-    def _is_mnc_install(self):
-        """
-        check if minicap and minicap.so installed
-
-        :return:
-            None
-        """
-        if not self.check_file(self.HOME, 'minicap'):
-            logger.error('minicap is not install in {}', self.device_id)
-            self._push_target_mnc()
-        if not self.check_file(self.HOME, 'minicap.so'):
-            logger.error('minicap.so is not install in {}', self.device_id)
-            self._push_target_mnc_so()
-        logger.info('minicap and minicap.so is install')
-
-    def get_display_info(self):
-        """
-        command adb shell minicap -i
-        :return:
-            display information
-        """
-        display_info = self.raw_shell([self.MNC_CMD, '-i'])
-        match = re.compile(r'({.*})', re.DOTALL).search(display_info)
-        display_info = match.group(0) if match else display_info
-        display_info = json.loads(display_info)
-        display_info["orientation"] = display_info["rotation"] / 90
-        # adb获取分辨率
-        wm_size = self.raw_shell(['wm', 'size'])
-        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
-        if len(wm_size) > 0:
-            display_info['physical_width'] = display_info['width']
-            display_info['physical_height'] = display_info['height']
-            display_info['width'] = int(wm_size[0][0])
-            display_info['height'] = int(wm_size[0][1])
-        # adb方式获取DPI
-        wm_dpi = self.raw_shell(['wm', 'density'])
-        wm_dpi = re.findall(r'Physical density: (\d+)\r', wm_dpi)
-        if len(wm_dpi) > 0:
-            display_info['dpi'] = int(wm_dpi[0])
-        logger.debug('display_info {}', display_info)
-        # if display_info['height'] > display_info['width']:
-        #     display_info['height'],display_info['width'] = display_info['width'], display_info['height']
-        self._display_info = display_info
-        return display_info
-
-    def start_mnc_server(self):
-        """
-        command adb shell {self.MNC_CMD} -P 1920x1080@1920x1080/0 开启minicap服务
-        :return:
-            None
-        """
-        display_info = self.get_display_info()
-        self.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
-                          '%dx%d@%dx%d/%d 2>&1' % (display_info['width'], display_info['height'],
-                                                   display_info['width'], display_info['height'],
-                                                   display_info['rotation'])])
-        logger.info('%s minicap server is running' % self.device_id)
-        time.sleep(1)
-
-    def screencap(self):
-        """
-        通过socket读取minicap的图片数据,并且通过cv2生成图片
-        :return:
-            cv2.img
-        """
-        readBannerBytes = 0
-        bannerLength = 2
-        readFrameBytes = 0
-        frameBodyLengthRemaining = 0
-        frameBody = ''
-        banner = {
-            'version': 0,
-            'length': 0,
-            'pid': 0,
-            'realWidth': 0,
-            'realHeight': 0,
-            'virtualWidth': 0,
-            'virtualHeight': 0,
-            'orientation': 0,
-            'quirks': 0
-        }
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect(('localhost', self.MNC_PORT))
-        self.start_shell([self.MNC_CMD, "-n '{}' -s 2>&1".format(self.MNC_LOCAL_NAME)])
-        width, height = self._display_info['width'], self._display_info['height']
-        while True:
-            chunk = client_socket.recv(24000)  # 调大可用加快速度,但是24000以上基本就没有差距了
-            if len(chunk) == 0:
-                continue
-
-            cursor = 0
-            while cursor < len(chunk):
-                if readBannerBytes < bannerLength:
-                    if readBannerBytes == 0:
-                        banner['version'] = int(hex(chunk[cursor]), 16)
-                    elif readBannerBytes == 1:
-                        banner['length'] = bannerLength = int(hex(chunk[cursor]), 16)
-                    elif 2 <= readBannerBytes <= 5:
-                        banner['pid'] = int(hex(chunk[cursor]), 16)
-                    elif readBannerBytes == 23:
-                        banner['quirks'] = int(hex(chunk[cursor]), 16)
-
-                    cursor += 1
-                    readBannerBytes += 1
-
-                elif readFrameBytes < 4:
-                    frameBodyLengthRemaining += (int(hex(chunk[cursor]), 16) << (readFrameBytes * 8))
-                    cursor += 1
-                    readFrameBytes += 1
-
-                else:
-                    # if this chunk has data of next image
-                    if len(chunk) - cursor >= frameBodyLengthRemaining:
-                        frameBody = frameBody + chunk[cursor:(cursor + frameBodyLengthRemaining)]
-                        if hex(frameBody[0]) != '0xff' or hex(frameBody[1]) != '0xd8':
-                            exit()
-                        img = np.array(bytearray(frameBody))
-                        img = cv2.imdecode(img, 1)
-                        img = cv2.resize(img, (width, height))
-                        cv2.imwrite(self.MNC_CAP_PATH, img)
-                        client_socket.close()
-                        logger.info('%s screencap' % self.device_id)
-                        return img
-                    else:
-                        # else this chunk is still for the current image
-                        frameBody = bytes(list(frameBody) + list(chunk[cursor:len(chunk)]))
-                        frameBodyLengthRemaining -= (len(chunk) - cursor)
-                        readFrameBytes += len(chunk) - cursor
-                        cursor = len(chunk)
-
-
-def TOUCH_EVENT():
-    l = {
-        'EVENT_ID': 1,
-        'EVENT_PATH': '',
-        'INDEX_LIST': {
-            'index': [False, False, False, False, False, False, False, False, False, False],
-            'count': 0,
-        },
-    }
-
-    class _Touch(object):
-        def __getitem__(self, item):
-            if item == 'index':
-                return l['INDEX_LIST']['index']
-            if item == 'count':
-                return l['INDEX_LIST']['count']
-            if item == 'EVENT_ID' or item == 'EVENT_PATH':
-                return l[item]
-            if item == 'width' or item == 'height':
-                return l['EVENT_WINDOWSIZE'][item]
-
-        def add_eventid(self):
-            l['EVENT_ID'] += 1
-
-        def index_down(self, index: int):
-            '''手指按下调整为True,count减1'''
-            l['INDEX_LIST']['index'][index] = True
-            l['INDEX_LIST']['count'] += 1
-            # self.setCount(self['count'] + 1)
-
-        def index_up(self, index: int):
-            '''手指按下调整为True,count减1'''
-            l['INDEX_LIST']['index'][index] = False
-            l['INDEX_LIST']['count'] -= 1
-            # self.setCount(self['count'] - 1)
-
-        def set_eventPath(self, path):
-            l['EVENT_PATH'] = path
-
-        def set_count(self, num: int):
-            l['INDEX_LIST']['count'] = num
-    return _Touch()
-
-
-class _BaseClient(ADB, _Minicap):
-    """基本的控制类"""
-    TOUCH_EVENT = TOUCH_EVENT()
-
-    def touch(self):
-        """
-
-        :return:
-        """
-
-        class _Touch(object):
-            def down(self, x: int, y: int, index: int = 1):
-                """
-
-                :param x:
-                :param y:
-                :param index:
-                :return:
-                """
-
-        return _Touch()
-
-
-
-class Device(_Minicap,_BaseClient):
-    pass
-
-
-def connect(device_id=None, adb_path=None, host='127.0.0.1', port=5037):
-    return Device(device_id, adb_path, host, port)
+    def get_device_id(self):
+        return self.device_id
