@@ -11,7 +11,6 @@ class Android(object):
         if minicap:
             self.minicap = Minicap(self.adb)
 
-
     def screencap(self):
         return self.minicap.screencap()
 

@@ -29,11 +29,10 @@ class Minicap(object):
         self.MNC_CMD = 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap'
         self.MNC_LOCAL_NAME = 'minicap_%s' % self.adb.get_device_id()
         self.MNC_CAP_PATH = 'temp_%s.png' % self.adb.get_device_id()
-
+        self._abi_version = self.adb.abi_version().rstrip()
+        self._sdk_version = self.adb.sdk_version().rstrip()
         self.set_minicap_port()
         self.start_mnc_server()
-        self.abi_version = self.adb.abi_version().rstrip()
-        self.sdk_version = self.adb.sdk_version().rstrip()
 
     def set_minicap_port(self):
         """
@@ -49,9 +48,9 @@ class Minicap(object):
 
     def _push_target_mnc(self):
         """ push specific minicap """
-        mnc_path = "./android/{}/bin/minicap".format(self.abi_version)
-        # logger.debug('target minicap path: ' + mnc_path)
 
+        mnc_path = "./static/stf_libs/{}/minicap".format(self._abi_version)
+        # logger.debug('target minicap path: ' + mnc_path)
         # push and grant
         self.adb.start_cmd(['push', mnc_path, self.MNC_HOME])
         self.adb.start_shell(['chmod', '777', self.MNC_HOME])
@@ -59,8 +58,7 @@ class Minicap(object):
 
     def _push_target_mnc_so(self):
         """ push specific minicap.so (they should work together) """
-        mnc_so_path = './android/{}/lib/android-{}/minicap.so'.format(self.abi_version,
-                                                                      self.sdk_version)
+        mnc_so_path = "./static/stf_libs/minicap-shared/aosp/libs/android-{sdk}/{abi}/minicap.so".format(sdk=self._sdk_version,abi=self._abi_version)
         # logger.debug('target minicap.so url: ' + mnc_so_path)
         # push and grant
         self.adb.start_cmd(['push', mnc_so_path, self.MNC_SO_HOME])
@@ -123,8 +121,8 @@ class Minicap(object):
                               '%dx%d@%dx%d/%d 2>&1' % (display_info['width'], display_info['height'],
                                                        display_info['width'], display_info['height'],
                                                        display_info['rotation'])])
-        logger.info('%s minicap server is running' % self.adb.get_device_id())
         time.sleep(1)
+        logger.info('%s minicap server is running' % self.adb.get_device_id())
 
     def screencap(self):
         """
