@@ -5,7 +5,6 @@ import json
 import time
 import socket
 
-
 from core.adb import ADB
 
 import cv2
@@ -16,10 +15,8 @@ from loguru import logger
 class Minicap(object):
     """minicap模块"""
 
-    # 所有参数都要加上device_id
     def __init__(self, adb: ADB):
         """
-
         :param adb: adb instance of android device
         """
         self.adb = adb
@@ -48,9 +45,7 @@ class Minicap(object):
 
     def _push_target_mnc(self):
         """ push specific minicap """
-
         mnc_path = "./static/stf_libs/{}/minicap".format(self._abi_version)
-        # logger.debug('target minicap path: ' + mnc_path)
         # push and grant
         self.adb.start_cmd(['push', mnc_path, self.MNC_HOME])
         self.adb.start_shell(['chmod', '777', self.MNC_HOME])
@@ -59,7 +54,6 @@ class Minicap(object):
     def _push_target_mnc_so(self):
         """ push specific minicap.so (they should work together) """
         mnc_so_path = "./static/stf_libs/minicap-shared/aosp/libs/android-{sdk}/{abi}/minicap.so".format(sdk=self._sdk_version,abi=self._abi_version)
-        # logger.debug('target minicap.so url: ' + mnc_so_path)
         # push and grant
         self.adb.start_cmd(['push', mnc_so_path, self.MNC_SO_HOME])
         self.adb.start_shell(['chmod', '777', self.MNC_SO_HOME])
@@ -82,6 +76,7 @@ class Minicap(object):
 
     def get_display_info(self):
         """
+        get display info by minicap
         command adb shell minicap -i
         :return:
             display information

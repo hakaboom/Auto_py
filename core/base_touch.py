@@ -66,7 +66,7 @@ class Touch(object):
         self.adb = adb
         self.event_path = self._get_event_path()
         self.event_size = self._get_event_size()
-        self.screen_size = {'width': 1920, 'height': 1080}
+        self.screen_size = {'width': 1280, 'height': 720}
         self.Touch_event = Touch_event(event_path=self.event_path, event_size=self.event_size,
                                        screen_size=self.screen_size, orientation=orientation)
 
@@ -119,7 +119,7 @@ class Touch(object):
                 'sendevent {} {} {} {}'.format(eventPath, 3, 54, int(y * 10)),
                 'sendevent {} 0 0 0'.format(eventPath),
             )
-        self.adb.raw_shell(';'.join(t),ensure_unicode=False)
+        self.adb.start_shell('&&'.join(t))
 
     def up(self, x: int, y: int, index: int = 1):
         x, y = self.Touch_event.transform(x, y)
@@ -139,7 +139,7 @@ class Touch(object):
                 'sendevent {} {} {} {}'.format(eventPath, 1, 330, 0),
                 'sendevent {} 0 0 0'.format(eventPath),
             )
-        self.adb.raw_shell(';'.join(t))
+        self.adb.start_shell('&&'.join(t))
 
     def click(self, x: int ,y: int, index: int = 1, duration: int = 100):
         x, y = self.Touch_event.transform(x, y)
@@ -161,22 +161,20 @@ class Touch(object):
             t2 = ([
                 'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
                 'sendevent {} {} {} {}'.format(eventPath, 3, 57, -1),
-                'sendevent {} 0 0 0;'.format(eventPath),
+                'sendevent {} 0 0 0&&'.format(eventPath),
             ])
         else:
             t2 = ([
                 'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
                 'sendevent {} {} {} {}'.format(eventPath, 3, 57, -1),
                 'sendevent {} {} {} {}'.format(eventPath, 1, 330, 0),
-                'sendevent {} 0 0 0;'.format(eventPath),
+                'sendevent {} 0 0 0'.format(eventPath),
             ])
-        self.adb.raw_shell(';'.join(t1) + ';'.join(t2),ensure_unicode=False)
+        self.adb.start_shell('&&'.join(t1) + '&&'.join(t2))
+        self.sleep(duration)
 
     def long_click(self, x: int, y: int, index: int = 1, duration: int = 500):
         self.click(x, y, index, duration)
-
-    def double_click(self, x:int, y:int, index, duration: int = 500):
-        pass
 
     def sleep(self, duration: int = 50):
         time.sleep(duration / 1000)
