@@ -1,45 +1,70 @@
 # -*- coding: utf-8 -*-
 import re
-import json
-import time
-import sys
 import socket
-from typing import Tuple, Dict
-from core.utils import str2byte
-from core.adb import ADB
+import time
+import math
+from typing import Tuple
 
 from loguru import logger
 
+from core.adb import ADB
+from core.constant import (TEMP_HOME, MNT_HOME, MNT_LOCAL_NAME, MNT_INSTALL_PATH)
+from core.utils import str2byte
 
-class Minitouch(object):
+
+class transform(object):
+    """通过minitouch的max_x,max_y与屏幕适配"""
+    def __init__(self, max_x: int = 0, max_y: int = 0, orientation: int = 1):
+        self.event_size = {'width': max_x, 'height': max_y}
+        self.screen_size = {'width': 1920, 'height': 1080}
+        self.event_scale = self.event2windows()
+        self.orientation = orientation
+
+    def event2windows(self):
+        return {
+            'width': self.screen_size['width'] / self.event_size['width'],
+            'height': self.screen_size['height'] / self.event_size['height']
+        }
+
+    def right2right(self, x, y):
+        return round(x / self.event_scale['width']), \
+               round(y / self.event_scale['height'])
+
+    def portrait2right(self, x, y):
+        return round((x / self.screen_size['height'] * self.screen_size['width']) / self.event_scale['width']), \
+               round((y / self.screen_size['width'] * self.screen_size['height'] / self.event_scale['height']))
+
+    def left2right(self, x, y):
+        return round((1 - x / self.screen_size['height']) * self.screen_size['width'] / self.event_scale['height']), \
+               round((1 - y / self.screen_size['width']) * self.screen_size['height'] / self.event_scale['height'])
+
+
+class Minitouch(transform):
     """
     minitouch模块
     由于minitouch中传坐标精确到了小数点后一位,为了可读性,约定传参时坐标为正常坐标如:1920,1080
     发送坐标时需要乘以10变为19200,10800
     """
-
     def __init__(self, adb: ADB):
         """
         :param adb: adb instance of android device
         """
         self.adb = adb
-        self.HOME = '/data/local/tmp'
-        self.MNT_HOME = '/data/local/tmp/minitouch'
-        self.MNT_CMD = 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minitouch'
-        self.MNT_LOCAL_NAME = 'minitouch_%s' % self.adb.get_device_id()
-        self._abi_version = self.adb.abi_version().rstrip()
-        self.server_proc = None
-        self.max_x = 0
-        self.max_y = 0
+        self.HOME = TEMP_HOME
+        self.MNT_HOME = MNT_HOME
+        self.MNT_LOCAL_NAME = MNT_LOCAL_NAME(self.adb.get_device_id())
+        self._abi_version = self.adb.abi_version()
+        self.max_x = self.max_y = self.MNT_PORT = 0
         self.set_minitouch_port()
         self.start_minitouch_server()
-        self.reset_events()
+        super(Minitouch, self).__init__(max_x=self.max_x, max_y=self.max_y, orientation=1)
 
     def _push_target_mnt(self):
         """ push specific minitouch """
-        mnt_path = "./static/stf_libs/{}/minitouch".format(self._abi_version)
+        mnt_path = MNT_INSTALL_PATH(self._abi_version)
         # push and grant
         self.adb.start_cmd(['push', mnt_path, self.MNT_HOME])
+        time.sleep(1)
         self.adb.start_shell(['chmod', '777', self.MNT_HOME])
         logger.debug('minicap installed in {}', self.MNT_HOME)
 
@@ -56,17 +81,22 @@ class Minitouch(object):
         self.MNT_PORT = int(re.compile(r'tcp:(\d+)').findall(self.adb._forward_local_using[index[1]]['local'])[0])
 
     def start_minitouch_server(self):
-        self.adb.start_shell("{path} -n '{name}'".format(path=self.MNT_HOME,name=self.MNT_LOCAL_NAME))
+        # 如果之前服务在运行,则销毁
+        self.adb.kill_process(name=MNT_HOME)
         time.sleep(1)
+
+        self.adb.start_shell("{path} -n '{name}'".format(path=self.MNT_HOME, name=self.MNT_LOCAL_NAME))
+        time.sleep(1)
+
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client.connect(('127.0.0.1', self.MNT_PORT))
 
         # get minitouch server info
         socket_out = client.makefile()
+
         # v <version>
         # protocol version, usually it is 1. needn't use this
         version = re.findall(r'(\d+)', socket_out.readline())
-
         # ^ <max-contacts> <max-x> <max-y> <max-pressure>
         max_contacts, max_x, max_y, max_pressure = re.findall(r'(\d+)', socket_out.readline())
         self.max_x, self.max_y = int(max_x)/10, int(max_y)/10
@@ -76,15 +106,25 @@ class Minitouch(object):
 
     def _is_mnt_install(self):
         if not self.adb.check_file(self.HOME, 'minitouch'):
-            logger.error('minitouch is not install in {}', self.adb.get_device_id())
+            logger.error('{} minitouch is not install in {}', self.adb.device_id, self.adb.get_device_id())
             self._push_target_mnt()
-        logger.info('minitouch is install')
+        logger.info('{} minitouch is install', self.adb.device_id,)
 
     def send(self, content: str):
         byte_connect = str2byte(content)
         self.client.sendall(byte_connect)
         return self.client.recv(0)
 
+    def transform(self, x, y):
+        if self.orientation == 1:
+            return self.right2right(x, y)
+        if self.orientation == 2:
+            return self.left2right(x, y)
+        if self.orientation == 3:
+            return self.portrait2right(x, y)
+
+
+class Touch(Minitouch):
     def sleep(self, ms: int):
         """
         command: 'w <ms>\n'
@@ -102,6 +142,7 @@ class Minitouch(object):
             index: 使用的手指
             pressure: 按压力度
         """
+        x, y = self.transform(x, y)
         if x > self.max_x or y > self.max_y:
             raise OverflowError('坐标不能大于max值, x={},y={},max_x={},max_y={}'.format(x, y, self.max_x, self.max_y))
         s = 'd {} {} {} {}\nc\n'.format(index, x*10, y*10, pressure)
@@ -117,7 +158,8 @@ class Minitouch(object):
         s = 'u {}\nc\n'.format(index)
         self.send(s)
 
-    def move(self, start: Tuple[int, int], end: Tuple[int, int], index: int = 0, spacing: int = 5, pressure: int = 50, duration: int = 50):
+    def move(self, start: Tuple[int, int], end: Tuple[int, int], index: int = 0, spacing: int = 5,
+             pressure: int = 50, duration: int = 50):
         """
         拖动
 
@@ -132,12 +174,15 @@ class Minitouch(object):
         :return:
             None
         """
-        start_x, start_y = start
-        end_x, end_y = end
+        start_x, start_y = self.transform(start)
+        end_x, end_y =  self.transform(end)
         if start_x > self.max_x or start_y > self.max_y:
-            raise OverflowError('start坐标不能大于max值, x={},y={},max_x={},max_y={}'.format(start_x, start_y, self.max_x, self.max_y))
+            raise OverflowError('start坐标不能大于max值, x={},y={},max_x={},max_y={}'.
+                                format(start_x, start_y, self.max_x, self.max_y))
         if end_x > self.max_x or end_y > self.max_y:
-            raise OverflowError('end坐标不能大于max值, x={},y={},max_x={},max_y={}'.format(end_x, end_y, self.max_x, self.max_y))
+            raise OverflowError('end坐标不能大于max值, x={},y={},max_x={},max_y={}'.
+                                format(end_x, end_y, self.max_x, self.max_y))
+
         x, y = 0, 0
         t = ["d {} {} {} {}\nc\n".format(index, start_x * 10, start_y * 10, pressure)]
         for i in range(spacing, 100, spacing):
@@ -157,7 +202,6 @@ class Minitouch(object):
         self.send('r\n')
 
     def click(self, x: int, y: int, index: int = 0, duration: int = 20):
-        self.down(x, y)
+        self.down(x, y, index)
         self.sleep(duration)
-        self.up(x, y)
-
+        self.up(x, y, index)

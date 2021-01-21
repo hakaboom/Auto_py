@@ -4,7 +4,8 @@ import re
 import json
 import time
 import socket
-
+from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD,MNC_SO_HOME, MNC_CAP_PATH,
+                           MNC_LOCAL_NAME, MNC_INSTALL_PATH, MNC_SO_INSTALL_PATH)
 from core.adb import ADB
 
 import cv2
@@ -14,20 +15,19 @@ from loguru import logger
 
 class Minicap(object):
     """minicap模块"""
-
     def __init__(self, adb: ADB):
         """
         :param adb: adb instance of android device
         """
         self.adb = adb
-        self.HOME = '/data/local/tmp'
-        self.MNC_HOME = '/data/local/tmp/minicap'
-        self.MNC_SO_HOME = '/data/local/tmp/minicap.so'
-        self.MNC_CMD = 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap'
-        self.MNC_LOCAL_NAME = 'minicap_%s' % self.adb.get_device_id()
-        self.MNC_CAP_PATH = 'temp_%s.png' % self.adb.get_device_id()
-        self._abi_version = self.adb.abi_version().rstrip()
-        self._sdk_version = self.adb.sdk_version().rstrip()
+        self.HOME = TEMP_HOME
+        self.MNC_HOME = MNC_HOME
+        self.MNC_SO_HOME = MNC_SO_HOME
+        self.MNC_CMD = MNC_CMD
+        self.MNC_LOCAL_NAME = MNC_LOCAL_NAME(self.adb.get_device_id())
+        self.MNC_CAP_PATH = MNC_CAP_PATH(self.adb.get_device_id())
+        self._abi_version = self.adb.abi_version()
+        self._sdk_version = self.adb.sdk_version()
         self.set_minicap_port()
         self.start_mnc_server()
 
@@ -45,17 +45,19 @@ class Minicap(object):
 
     def _push_target_mnc(self):
         """ push specific minicap """
-        mnc_path = "./static/stf_libs/{}/minicap".format(self._abi_version)
+        mnc_path = MNC_INSTALL_PATH(self._abi_version)
         # push and grant
         self.adb.start_cmd(['push', mnc_path, self.MNC_HOME])
+        time.sleep(1)
         self.adb.start_shell(['chmod', '777', self.MNC_HOME])
         logger.debug('minicap installed in {}', self.MNC_HOME)
 
     def _push_target_mnc_so(self):
         """ push specific minicap.so (they should work together) """
-        mnc_so_path = "./static/stf_libs/minicap-shared/aosp/libs/android-{sdk}/{abi}/minicap.so".format(sdk=self._sdk_version,abi=self._abi_version)
+        mnc_so_path = MNC_SO_INSTALL_PATH(self._sdk_version, self._abi_version)
         # push and grant
         self.adb.start_cmd(['push', mnc_so_path, self.MNC_SO_HOME])
+        time.sleep(1)
         self.adb.start_shell(['chmod', '777', self.MNC_SO_HOME])
         logger.debug('minicap.so installed in {}', self.MNC_SO_HOME)
 
@@ -67,12 +69,12 @@ class Minicap(object):
             None
         """
         if not self.adb.check_file(self.HOME, 'minicap'):
-            logger.error('minicap is not install in {}', self.adb.get_device_id())
+            logger.error('{} minicap is not install in {}', self.adb.device_id, self.adb.get_device_id())
             self._push_target_mnc()
         if not self.adb.check_file(self.HOME, 'minicap.so'):
-            logger.error('minicap.so is not install in {}', self.adb.get_device_id())
+            logger.error('{} minicap.so is not install in {}', self.adb.device_id, self.adb.get_device_id())
             self._push_target_mnc_so()
-        logger.info('minicap and minicap.so is install')
+        logger.info('{} minicap and minicap.so is install', self.adb.device_id,)
 
     def get_display_info(self):
         """
@@ -110,14 +112,20 @@ class Minicap(object):
         :return:
             None
         """
+        # 如果之前服务在运行,则销毁
+        self.adb.kill_process(name=MNC_HOME)
+
         display_info = self.get_display_info()
         self.display_info = display_info
         self.adb.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
                               '%dx%d@%dx%d/%d 2>&1' % (display_info['width'], display_info['height'],
                                                        display_info['width'], display_info['height'],
                                                        display_info['rotation'])])
-        time.sleep(1)
         logger.info('%s minicap server is running' % self.adb.get_device_id())
+        time.sleep(1)
+
+    def reset(self):
+        self.display_info['height'], self.display_info['width'] = self.display_info['width'], self.display_info['height']
 
     def screencap(self):
         """

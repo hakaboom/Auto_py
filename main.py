@@ -2,9 +2,11 @@
 import time
 import socket
 import re
+import subprocess
 from core.run import Android
-a = Android(device_id='emulator-5562', minicap=False)
-b = time.time()
-for i in range(100):
-    a.minitouch.click(680, 490)
-print(time.time()- b)
+#
+a = Android(device_id='emulator-5554')
+a.screencap()
+time.sleep(10)
+a.minicap.start_mnc_server()
+a.screencap()

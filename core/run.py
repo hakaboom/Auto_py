@@ -3,7 +3,7 @@
 from core.adb import ADB
 from core.minicap import Minicap
 from core.base_touch import Touch
-from core.minitouch import Minitouch
+from core.minitouch import Touch as Minitouch
 
 class Android(object):
     """不应该暴露adb接口出来???"""

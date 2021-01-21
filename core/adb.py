@@ -10,27 +10,14 @@ import platform
 import warnings
 import subprocess
 from typing import Union, Tuple
-
-from core.utils import split_cmd, split_process_status,get_std_encoding,AdbError
+from core.constant import DEFAULT_ADB_PATH, SHELL_ENCODING
+from core.utils import split_cmd, split_process_status, get_std_encoding, AdbError
 
 from loguru import logger
-
-THISPATH = os.path.dirname(os.path.realpath('static'))
-STATICPATH = os.path.join(THISPATH, "static")
-DEFAULT_ADB_PATH = {
-    "Windows": os.path.join(STATICPATH, "adb", "windows", "adb.exe"),
-    "Darwin": os.path.join(STATICPATH, "adb", "mac", "adb"),
-    "Linux": os.path.join(STATICPATH, "adb", "linux", "adb"),
-    "Linux-x86_64": os.path.join(STATICPATH, "adb", "linux", "adb"),
-    "Linux-armv7l": os.path.join(STATICPATH, "adb", "linux_arm", "adb"),
-}
 
 
 class ADB(object):
     """adb object class"""
-    status_device = 'device'
-    status_offline = 'offline'
-    SHELL_ENCODING = 'utf-8'
 
     def __init__(self, device_id=None, adb_path=None, host='127.0.0.1', port=5037):
         self.device_id = device_id
@@ -233,9 +220,9 @@ class ADB(object):
         if not ensure_unicode:
             return stdout
         try:
-            return stdout.decode(self.SHELL_ENCODING)
+            return stdout.decode(SHELL_ENCODING)
         except UnicodeDecodeError:
-            logger.error('shell output decode {} fail. repr={}', self.SHELL_ENCODING, repr(stdout))
+            logger.error('shell output decode {} fail. repr={}', SHELL_ENCODING, repr(stdout))
             return str(repr(stdout))
 
     def shell(self, cmd: Union[list, str]):
@@ -400,13 +387,13 @@ class ADB(object):
 
     def abi_version(self):
         """ get abi (application binary interface) """
-        abi = self.raw_shell(['getprop', 'ro.product.cpu.abi'])
+        abi = self.raw_shell(['getprop', 'ro.product.cpu.abi']).rstrip()
         logger.info('device {} abi is {}'.format(self.device_id, abi).rstrip('\r\n'))
         return abi
 
     def sdk_version(self):
         """ get sdk version """
-        sdk = self.raw_shell(['getprop', 'ro.build.version.sdk'])
+        sdk = self.raw_shell(['getprop', 'ro.build.version.sdk']).rstrip()
         logger.info('device {} sdk is {}'.format(self.device_id, sdk).rstrip('\r\n'))
         return sdk
 
@@ -426,6 +413,7 @@ class ADB(object):
     def get_process_status(self, pid: int = None, name: str = None) -> list:
         """
         adb shell ps
+        获取应用状态
 
         Args:
             pid: 按照pid寻找
@@ -467,6 +455,7 @@ class ADB(object):
                 logger.info('NAME: {} is not started', name)
                 return False
         self.start_shell(['kill', str(pid)])
+        logger.info('{} PID:{} NAME:{} is kill', self.device_id, pid, out[0]['NAME'])
 
     def install_app(self, filepath, replace=False):
         pass
