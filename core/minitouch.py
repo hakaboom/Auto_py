@@ -39,7 +39,7 @@ class transform(object):
                round((1 - y / self.screen_size['width']) * self.screen_size['height'] / self.event_scale['height'])
 
 
-class Minitouch(transform):
+class _Minitouch(transform):
     """
     minitouch模块
     由于minitouch中传坐标精确到了小数点后一位,为了可读性,约定传参时坐标为正常坐标如:1920,1080
@@ -52,16 +52,16 @@ class Minitouch(transform):
         self.adb = adb
         self.HOME = TEMP_HOME
         self.MNT_HOME = MNT_HOME
-        self.MNT_LOCAL_NAME = MNT_LOCAL_NAME(self.adb.get_device_id())
+        self.MNT_LOCAL_NAME = MNT_LOCAL_NAME.format(self.adb.get_device_id())
         self._abi_version = self.adb.abi_version()
         self.max_x = self.max_y = self.MNT_PORT = 0
         self.set_minitouch_port()
         self.start_minitouch_server()
-        super(Minitouch, self).__init__(max_x=self.max_x, max_y=self.max_y, orientation=1)
+        super(_Minitouch, self).__init__(max_x=self.max_x, max_y=self.max_y, orientation=1)
 
     def _push_target_mnt(self):
         """ push specific minitouch """
-        mnt_path = MNT_INSTALL_PATH(self._abi_version)
+        mnt_path = MNT_INSTALL_PATH.format(self._abi_version)
         # push and grant
         self.adb.start_cmd(['push', mnt_path, self.MNT_HOME])
         time.sleep(1)
@@ -124,12 +124,12 @@ class Minitouch(transform):
             return self.portrait2right(x, y)
 
 
-class Touch(Minitouch):
-    def sleep(self, ms: int):
+class Minitouch(_Minitouch):
+    def sleep(self, duration: int):
         """
         command: 'w <ms>\n'
         """
-        s = 'w {}\n'.format(ms)
+        s = 'w {}\n'.format(duration)
         self.send(s)
 
     def down(self, x: int, y: int, index: int = 0, pressure: int = 50):

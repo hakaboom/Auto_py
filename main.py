@@ -1,12 +1,7 @@
 # -*- coding: utf-8 -*-
-import time
-import socket
-import re
-import subprocess
+
 from core.run import Android
-#
-a = Android(device_id='emulator-5554')
-a.screencap()
-time.sleep(10)
-a.minicap.start_mnc_server()
-a.screencap()
+from typing import Union, Tuple
+
+a = Android(device_id='emulator-5562')
+a.adb.get_process_status(name='com.bilibili.azurlane')

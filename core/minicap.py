@@ -13,7 +13,7 @@ import numpy as np
 from loguru import logger
 
 
-class Minicap(object):
+class _Minicap(object):
     """minicap模块"""
     def __init__(self, adb: ADB):
         """
@@ -24,8 +24,8 @@ class Minicap(object):
         self.MNC_HOME = MNC_HOME
         self.MNC_SO_HOME = MNC_SO_HOME
         self.MNC_CMD = MNC_CMD
-        self.MNC_LOCAL_NAME = MNC_LOCAL_NAME(self.adb.get_device_id())
-        self.MNC_CAP_PATH = MNC_CAP_PATH(self.adb.get_device_id())
+        self.MNC_LOCAL_NAME = MNC_LOCAL_NAME.format(self.adb.get_device_id())
+        self.MNC_CAP_PATH = MNC_CAP_PATH.format(self.adb.get_device_id())
         self._abi_version = self.adb.abi_version()
         self._sdk_version = self.adb.sdk_version()
         self.set_minicap_port()
@@ -45,7 +45,7 @@ class Minicap(object):
 
     def _push_target_mnc(self):
         """ push specific minicap """
-        mnc_path = MNC_INSTALL_PATH(self._abi_version)
+        mnc_path = MNC_INSTALL_PATH.format(self._abi_version)
         # push and grant
         self.adb.start_cmd(['push', mnc_path, self.MNC_HOME])
         time.sleep(1)
@@ -54,7 +54,7 @@ class Minicap(object):
 
     def _push_target_mnc_so(self):
         """ push specific minicap.so (they should work together) """
-        mnc_so_path = MNC_SO_INSTALL_PATH(self._sdk_version, self._abi_version)
+        mnc_so_path = MNC_SO_INSTALL_PATH.format(self._sdk_version, self._abi_version)
         # push and grant
         self.adb.start_cmd(['push', mnc_so_path, self.MNC_SO_HOME])
         time.sleep(1)
@@ -124,10 +124,9 @@ class Minicap(object):
         logger.info('%s minicap server is running' % self.adb.get_device_id())
         time.sleep(1)
 
-    def reset(self):
-        self.display_info['height'], self.display_info['width'] = self.display_info['width'], self.display_info['height']
 
-    def screencap(self):
+class Minicap(_Minicap):
+    def screenshot(self):
         """
         通过socket读取minicap的图片数据,并且通过cv2生成图片
         :return:
@@ -197,3 +196,4 @@ class Minicap(object):
                         frameBodyLengthRemaining -= (len(chunk) - cursor)
                         readFrameBytes += len(chunk) - cursor
                         cursor = len(chunk)
+

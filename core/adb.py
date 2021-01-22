@@ -9,10 +9,12 @@ import socket
 import platform
 import warnings
 import subprocess
-from typing import Union, Tuple
-from core.constant import DEFAULT_ADB_PATH, SHELL_ENCODING
+from typing import Union, Tuple, IO
+from core.constant import DEFAULT_ADB_PATH, SHELL_ENCODING, ADB_CAP_PATH, ADB_CAP_NAME, ADB_CAP_NAME_RAW
 from core.utils import split_cmd, split_process_status, get_std_encoding, AdbError
 
+import cv2
+import numpy as np
 from loguru import logger
 
 
@@ -128,7 +130,7 @@ class ADB(object):
         close_pipe(proc.stderr)
 
     def cmd(self, cmds: Union[list, str], devices: bool = True, ensure_unicode: bool = True, timeout: int = None,
-            skip_error: bool = False):
+            skip_error: bool = False) -> Union[IO, str]:
         """
         用cmds创建adb命令,并且返回stdout
 
@@ -166,7 +168,7 @@ class ADB(object):
                 raise AdbError(stdout, stderr)
         return stdout
 
-    def devices(self, state: bool = None):
+    def devices(self, state: bool = None) -> list:
         """
         command adb devices
 
@@ -214,7 +216,7 @@ class ADB(object):
         cmds = ['shell'] + split_cmd(cmds)
         return self.start_cmd(cmds)
 
-    def raw_shell(self, cmds: Union[list, str], ensure_unicode: bool = True, skip_error: bool = False):
+    def raw_shell(self, cmds: Union[list, str], ensure_unicode: bool = True, skip_error: bool = False) -> str:
         cmds = ['shell'] + split_cmd(cmds)
         stdout = self.cmd(cmds, ensure_unicode=False, skip_error=skip_error)
         if not ensure_unicode:
@@ -225,7 +227,7 @@ class ADB(object):
             logger.error('shell output decode {} fail. repr={}', SHELL_ENCODING, repr(stdout))
             return str(repr(stdout))
 
-    def shell(self, cmd: Union[list, str]):
+    def shell(self, cmd: Union[list, str]) -> str:
         if self._sdk_version < 25:
             # sdk_version < 25, adb shell 不返回错误
             # https://issuetracker.google.com/issues/36908392
@@ -361,7 +363,7 @@ class ADB(object):
         if local_using:
             del self._forward_local_using[index]
 
-    def push(self, local, remote) -> None:
+    def push(self, local, remote):
         """
         运行adb push
         :param local:
@@ -373,7 +375,7 @@ class ADB(object):
         """
         self.cmd(["push", local, remote], ensure_unicode=False)
 
-    def pull(self, remote, local) -> None:
+    def pull(self, remote, local):
         """
         运行adb pull
         :param remote:
@@ -424,7 +426,7 @@ class ADB(object):
         if pid:
             shell = ['ps -x', str(pid)]
         elif name:
-            shell = "ps | grep \"{}\"".format(name)
+            shell = "ps | grep -w \"{}\"".format(name)
         else:
             shell = 'ps'
         out = self.raw_shell(shell, skip_error=True)
@@ -462,3 +464,73 @@ class ADB(object):
 
     def get_device_id(self):
         return self.device_id
+
+    def get_display_info(self):
+        """adb获取屏幕信息"""
+        # adb获取分辨率
+        wm_size = self.raw_shell(['wm', 'size'])
+        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
+        # adb方式获取DPI
+        wm_dpi = self.raw_shell(['wm', 'density'])
+        wm_dpi = re.findall(r'Physical density: (\d+)\r', wm_dpi)
+        print(wm_size,wm_dpi)
+
+    def screenshot(self, Rect: Tuple[int, int, int, int] = None):
+        """
+        截图
+        :param Rect: 顶点坐标x,y。截取长宽width,height
+        """
+        # 截取临时文件raw
+        remote_name = ADB_CAP_NAME_RAW.format(self.get_device_id())
+        local_path = ADB_CAP_PATH.format(remote_name)
+        self.raw_shell(['screencap', local_path])
+        self.start_shell(['chmod', '777', local_path])
+        self.pull(local_path, remote_name)
+        # readRaw
+        # read size
+        imgData = np.fromfile(remote_name, dtype=np.uint16)
+        width, height = imgData[2], imgData[0]
+        # read raw
+        imgData = np.fromfile(remote_name, dtype=np.uint8)
+        imgData = imgData[slice(12, len(imgData))]
+        if Rect:
+            if Rect[0] > height or Rect[1] > width or Rect[0]+Rect[2] > height or Rect[1]+Rect[3] > width:
+                raise OverflowError('Rect不能超出屏幕 {}'.format(Rect))
+            index = Rect[0] * 4 + Rect[1] * height * 4  # 从图片左上角开始,y计算公式y*height*4,x计算公式x*4, 4表示4通道
+            end = (Rect[0]+Rect[2]) * 4 + (Rect[1]+Rect[3]-1) * height * 4
+            imgData = imgData[index: end]
+            imgData = imgData.reshape(Rect[3], Rect[2], 4)
+        else:
+            imgData = imgData.reshape(width, height, 4)
+        imgData = imgData[:, :, ::-1][:, :, 1:4]  # imgData中rgbA转为Abgr,并截取bgr
+        cv2.imwrite(ADB_CAP_NAME.format(self.get_device_id()), imgData)
+        logger.info('%s screencap size=(width:%d,height:%d)' % (self.get_device_id(),width,height))
+        # 删除raw临时文件
+        os.remove(remote_name)
+
+        return imgData
+
+    def start_app(self, package: str, activity: str = None):
+        """
+        commands 'adb shell monkey'
+        if activity is None then commands 'adb shell am start'
+        :param package: package name
+        :param activity: activity name
+        :return: None
+        """
+        if activity:
+            self.shell(['am', 'start', '-n', '%s/%s.%s' % (package, package, activity)])
+        else:
+            self.shell(['monkey', '-p', package, '-c', 'android.intent.category.LAUNCHER', '1'])
+        logger.info('start app:{}', package)
+
+    def get_foreground_app(self) -> str:
+        """获取前台应用包名"""
+        shell = "dumpsys window windows | grep mCurrentFocus | cut -d'/' -f1 | rev | cut -d' ' -f1 | rev"
+        package = self.raw_shell(shell).rstrip()
+        logger.info("'{}' is running in the foreground", package)
+        return package
+
+    def app_is_running(self, name: str) -> bool:
+        """判断应用是否在运行"""
+        shell = "ps | grep -w {}".format(name)

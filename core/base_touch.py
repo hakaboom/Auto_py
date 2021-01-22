@@ -141,7 +141,7 @@ class Touch(object):
             )
         self.adb.start_shell('&&'.join(t))
 
-    def click(self, x: int ,y: int, index: int = 1, duration: int = 100):
+    def click(self, x: int, y: int, index: int = 0, duration: int = 20):
         x, y = self.Touch_event.transform(x, y)
         eventPath = self.Touch_event.event_path
         event_id = self.Touch_event.event_id
