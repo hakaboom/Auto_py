@@ -20,7 +20,7 @@ class Android(object):
             self.cap_method = CAP_METHOD.MINICAP
         else:
             self.cap_method = CAP_METHOD.ADBCAP
-        #touch mode
+        # touch mode
         if touch_method == 'minitouch':
             self.minitouch = Minitouch(self.adb)
             self.touch_method = TOUCH_METHOD.MINITOUCH
