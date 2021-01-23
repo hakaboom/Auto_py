@@ -21,14 +21,23 @@ from loguru import logger
 class ADB(object):
     """adb object class"""
 
-    def __init__(self, device_id=None, adb_path=None, host='127.0.0.1', port=5037):
+    def __init__(self, device_id: str = None, adb_path: str = None, host='127.0.0.1', port=5037):
         self.device_id = device_id
         self.adb_path = adb_path or self.builtin_adb_path()
         self._set_cmd_options(host, port)
-        self._forward_local_using = self.get_forwards()  # 已经使用的端口
         self.connect()
+
+        self._forward_local_using = self.get_forwards()  # 已经使用的端口
         self._display_info = []  # 需要通过minicap模块获取
         self._sdk_version = int(self.sdk_version())
+        # 截图文件名字
+        self._cap_name = ADB_CAP_NAME_RAW.format(device_id.replace(':', '_'))
+        # 截图在手机上的路径
+        self._cap_local_path = ADB_CAP_PATH.format(self._cap_name)
+        # 截图png存放到工程的路径
+        self._cap_remote_path = ADB_CAP_NAME.format(device_id.replace(':', '_'))
+        # raw临时文件存放到工程的路径
+        self._cap_raw_remote_path = self._cap_name
 
     @staticmethod
     def builtin_adb_path() -> str:
@@ -191,14 +200,14 @@ class ADB(object):
             device_list.append((serialno, cstate))
         return device_list
 
-    def connect(self):
+    def connect(self, force=False):
         """
         command adb connect
 
         Returns:
              None
         """
-        if self.device_id and ':' in self.device_id:
+        if self.device_id and ':' in self.device_id and (force or self.get_status() != 'devices'):
             connect_result = self.cmd("connect %s" % self.device_id)
             logger.info(connect_result.rstrip())
 
@@ -211,6 +220,25 @@ class ADB(object):
         """
         if ':' in self.device_id:
             self.cmd("disconnect %s" % self.device_id)
+            logger.info("disconnect to %s" % self.device_id)
+
+    def get_status(self):
+        """
+        command adb -s <devices_id> get-state
+        :return:
+        """
+        proc = self.start_cmd('get-state')
+        stdout, stderr = proc.communicate()
+
+        stdout = stdout.decode(get_std_encoding(sys.stdout))
+        stderr = stderr.decode(get_std_encoding(sys.stdout))
+
+        if proc.returncode == 0:
+            return stdout.strip()
+        elif "not found" in stderr:
+            return None
+        else:
+            raise AdbError(stdout, stderr)
 
     def start_shell(self, cmds: Union[list, str]) -> start_cmd:
         cmds = ['shell'] + split_cmd(cmds)
@@ -323,10 +351,19 @@ class ADB(object):
             remote: 要与local绑定的设备端口 localabstract:{remote}"
 
         :return:
-            None
+            localport:要转发的本地端口 tcp:<local>
+            remote:要与local绑定的设备端口 localabstract:{remote}"`
         """
         localport = self.get_available_forward_local()
         self.forward('tcp:%s' % localport, remote)
+        return localport, remote
+
+    def get_forward_port(self, remote: str):
+        """获取开放端口的端口号"""
+        index = self._local_in_forwards(remote='localabstract:%s' % remote)
+        if not index[0]:
+            logger.error('')
+        return int(re.compile(r'tcp:(\d+)').findall(self._forward_local_using[index[1]]['local'])[0])
 
     def _local_in_forwards(self, local: str = None, remote: str = None) -> Tuple[bool, int]:
         """
@@ -373,6 +410,8 @@ class ADB(object):
         :return:
             None
         """
+        if not os.path.isfile(local):
+            raise RuntimeError("file: %s does not exists" % (repr(local)))
         self.cmd(["push", local, remote], ensure_unicode=False)
 
     def pull(self, remote, local):
@@ -459,10 +498,64 @@ class ADB(object):
         self.start_shell(['kill', str(pid)])
         logger.info('{} PID:{} NAME:{} is kill', self.device_id, pid, out[0]['NAME'])
 
-    def install_app(self, filepath, replace=False):
-        pass
+    def install_app(self, filepath, replace=False, install_options=None):
+        """
+        command 'adb install'
+        :param filepath: 文件路径
+        :param replace: 是否覆盖安装,默认否
+        :param install_options:
+                e.g.["-t",  # allow test packages
+                    "-l",  # forward lock application,
+                    "-s",  # install application on sdcard,
+                    "-d",  # allow version code downgrade (debuggable packages only)
+                    "-g",  # grant all runtime permissions
+                ]
+        :return: command stdout
+        """
+        if not os.path.isfile(filepath):
+            raise RuntimeError("file: %s does not exists" % (repr(filepath)))
 
-    def get_device_id(self):
+        if not install_options or type(install_options) != list:
+            install_options = []
+            if replace:
+                install_options.append('-r')
+        cmds = ["install",] + install_options + [filepath]
+        out = self.cmd(cmds)
+        logger.info('install app:%s' % filepath)
+        if re.search(r"Failure \[.*?\]", out):
+            raise AdbError("Installation Failure\n%s" % out)
+
+        return out
+
+    def path_app(self, package: str) -> str:
+        """
+        command 'adb shell pm path'
+        :param package: package name
+        :return: package path
+        """
+        try:
+            stdout = self.shell(['pm', 'path', package])
+        except AdbError:
+            stdout = ''
+        if 'package:' not in stdout:
+            raise AdbError('package not found, stdout:[%s]' % stdout)
+        return stdout.split('package:')[1].strip()
+
+    def list_app(self, third_only=False) -> list:
+        """
+        command 'adb shell pm list packages'
+        :return: list of packages
+        """
+        cmd = ["pm", "list", "packages"]
+        if third_only:
+            cmd.append("-3")
+        output = self.shell(cmd)
+        packages = output.splitlines()
+        # remove all empty string; "package:xxx" -> "xxx"
+        packages = [p.split(":")[1] for p in packages if p]
+        return packages
+
+    def get_device_id(self) -> str:
         return self.device_id
 
     def get_display_info(self):
@@ -481,17 +574,19 @@ class ADB(object):
         :param Rect: 顶点坐标x,y。截取长宽width,height
         """
         # 截取临时文件raw
-        remote_name = ADB_CAP_NAME_RAW.format(self.get_device_id())
-        local_path = ADB_CAP_PATH.format(remote_name)
+        local_path = self._cap_local_path
+        remote_path = self._cap_remote_path
+        raw_remote_path = self._cap_raw_remote_path
+
         self.raw_shell(['screencap', local_path])
         self.start_shell(['chmod', '777', local_path])
-        self.pull(local_path, remote_name)
+        self.pull(local_path, raw_remote_path)
         # readRaw
         # read size
-        imgData = np.fromfile(remote_name, dtype=np.uint16)
+        imgData = np.fromfile(raw_remote_path, dtype=np.uint16)
         width, height = imgData[2], imgData[0]
         # read raw
-        imgData = np.fromfile(remote_name, dtype=np.uint8)
+        imgData = np.fromfile(raw_remote_path, dtype=np.uint8)
         imgData = imgData[slice(12, len(imgData))]
         if Rect:
             if Rect[0] > height or Rect[1] > width or Rect[0]+Rect[2] > height or Rect[1]+Rect[3] > width:
@@ -501,13 +596,13 @@ class ADB(object):
             imgData = imgData[index: end]
             imgData = imgData.reshape(Rect[3], Rect[2], 4)
         else:
-            imgData = imgData[:width*height*4]
             imgData = imgData.reshape(width, height, 4)
         imgData = imgData[:, :, ::-1][:, :, 1:4]  # imgData中rgbA转为Abgr,并截取bgr
-        cv2.imwrite(ADB_CAP_NAME.format(self.get_device_id()), imgData)
-        logger.info('%s screencap size=(width:%d,height:%d)' % (self.get_device_id(),width,height))
+        # 写入png
+        cv2.imwrite(remote_path, imgData)
+        logger.info('%s screencap size=(width:%d,height:%d)' % (self.get_device_id(), width, height))
         # 删除raw临时文件
-        os.remove(remote_name)
+        os.remove(raw_remote_path)
 
         return imgData
 

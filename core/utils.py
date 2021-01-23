@@ -64,7 +64,8 @@ class AdbError(Exception):
         return "stdout[%s] stderr[%s]" % (self.stdout, self.stderr)
 
     def no_file_or_directory(self):
-        return 'check the directory[%s]' % re.compile(r"'.+?'").search(self.stderr).group()
+        return 'file: %s does not exists' % re.compile(r"'.+?'").search(self.stderr).group()
+
 
 class NonBlockingStreamReader:
 
@@ -125,3 +126,6 @@ class NonBlockingStreamReader:
 
     def kill(self):
         self._kill_event.set()
+
+class UnexpectedEndOfStream(Exception):
+    pass

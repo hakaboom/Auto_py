@@ -5,6 +5,7 @@ from core.minicap import Minicap
 from core.base_touch import Touch as ADBTOUCH
 from core.minitouch import Minitouch
 from core.constant import TOUCH_METHOD, CAP_METHOD
+from core.Javecap import Javacap
 
 from typing import Union, Tuple
 
@@ -18,6 +19,9 @@ class Android(object):
         if cap_method == 'minicap':
             self.minicap = Minicap(self.adb)
             self.cap_method = CAP_METHOD.MINICAP
+        elif cap_method == 'javacap':
+            self.javacap = Javacap(self.adb)
+            self.cap_method = CAP_METHOD.JAVACAP
         else:
             self.cap_method = CAP_METHOD.ADBCAP
         # touch mode
@@ -28,9 +32,12 @@ class Android(object):
             self.adbtouch = ADBTOUCH(self.adb)
             self.touch_method = TOUCH_METHOD.ADBTOUCH
 
+
     def screenshot(self, Rect: Tuple[int, int, int, int] = None):
         if self.cap_method == CAP_METHOD.MINICAP:
             return self.minicap.screenshot()
+        elif self.cap_method == CAP_METHOD.JAVACAP:
+            return self.javacap.screenshot()
         elif self.cap_method == CAP_METHOD.ADBCAP:
             return self.adb.screenshot(Rect)
 

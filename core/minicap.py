@@ -4,6 +4,7 @@ import re
 import json
 import time
 import socket
+import struct
 from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD,MNC_SO_HOME, MNC_CAP_PATH,
                            MNC_LOCAL_NAME, MNC_INSTALL_PATH, MNC_SO_INSTALL_PATH)
 from core.adb import ADB
@@ -15,6 +16,8 @@ from loguru import logger
 
 class _Minicap(object):
     """minicap模块"""
+    RECVTIMEOUT = None
+
     def __init__(self, adb: ADB):
         """
         :param adb: adb instance of android device
@@ -31,6 +34,7 @@ class _Minicap(object):
         self._sdk_version = self.adb.sdk_version()
         self.set_minicap_port()
         self.start_mnc_server()
+        self.frame_gen = None
 
     def set_minicap_port(self):
         """
@@ -39,10 +43,9 @@ class _Minicap(object):
         """
         self._is_mnc_install()
         self.adb.set_forward('localabstract:%s' % self.MNC_LOCAL_NAME)
-        index = self.adb._local_in_forwards(remote='localabstract:%s' % self.MNC_LOCAL_NAME)
-        if not index[0]:
+        self.MNC_PORT = self.adb.get_forward_port(self.MNC_LOCAL_NAME)
+        if not self.MNC_PORT:
             raise logger.error('minicap port not set: local_name{}', self.MNC_LOCAL_NAME)
-        self.MNC_PORT = int(re.compile(r'tcp:(\d+)').findall(self.adb._forward_local_using[index[1]]['local'])[0])
 
     def _push_target_mnc(self):
         """ push specific minicap """
@@ -118,13 +121,13 @@ class _Minicap(object):
 
         display_info = self.get_display_info()
         self.display_info = display_info
-        self.adb.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
-                              '%dx%d@%dx%d/%d 2>&1' % (display_info['width'], display_info['height'],
+        proc = self.adb.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
+                                    '%dx%d@%dx%d/%d 2>&1' % (display_info['width'], display_info['height'],
                                                        display_info['width'], display_info['height'],
                                                        display_info['rotation'])])
         logger.info('%s minicap server is running' % self.adb.get_device_id())
-        time.sleep(1)
-
+        time.sleep(.5)
+        return proc
 
 class Minicap(_Minicap):
     def screenshot(self):
@@ -152,9 +155,8 @@ class Minicap(_Minicap):
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.connect(('localhost', self.MNC_PORT))
         self.adb.start_shell([self.MNC_CMD, "-n '{}' -s 2>&1".format(self.MNC_LOCAL_NAME)])
-        width, height = self.display_info['width'], self.display_info['height']
         while True:
-            chunk = client_socket.recv(24000)  # 调大可用加快速度,但是24000以上基本就没有差距了
+            chunk = client_socket.recv(24000)
             if len(chunk) == 0:
                 continue
 
@@ -172,12 +174,10 @@ class Minicap(_Minicap):
 
                     cursor += 1
                     readBannerBytes += 1
-
                 elif readFrameBytes < 4:
                     frameBodyLengthRemaining += (int(hex(chunk[cursor]), 16) << (readFrameBytes * 8))
                     cursor += 1
                     readFrameBytes += 1
-
                 else:
                     # if this chunk has data of next image
                     if len(chunk) - cursor >= frameBodyLengthRemaining:
@@ -186,7 +186,6 @@ class Minicap(_Minicap):
                             exit()
                         img = np.array(bytearray(frameBody))
                         img = cv2.imdecode(img, 1)
-                        img = cv2.resize(img, (width, height))
                         cv2.imwrite(self.MNC_CAP_PATH, img)
                         client_socket.close()
                         logger.info('%s screencap' % self.adb.get_device_id())
@@ -197,4 +196,3 @@ class Minicap(_Minicap):
                         frameBodyLengthRemaining -= (len(chunk) - cursor)
                         readFrameBytes += len(chunk) - cursor
                         cursor = len(chunk)
-
