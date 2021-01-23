@@ -25,6 +25,7 @@ python3.8.7（开发的时候用的这个版本）
 - [ ]  编译opencv-cudn
 - [ ]  opencv使用yolov4识别
 - [ ]  opencv进行图像识别
+- [ ]  非root权限下的运行
 
 ## 总结
 - 目前截图的几种方式
