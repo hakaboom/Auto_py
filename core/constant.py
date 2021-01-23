@@ -21,7 +21,7 @@ TEMP_HOME = '/data/local/tmp'  # 临时文件路径
 MNC_HOME = '/data/local/tmp/minicap'  # minicap文件在手机上的路径
 MNC_SO_HOME = '/data/local/tmp/minicap.so'  # minicap.so文件在手机上的路径
 MNC_CMD = 'LD_LIBRARY_PATH={} {}'.format(TEMP_HOME, MNC_HOME)  # 运行minicap的cmd命令
-MNC_CAP_PATH = ADB_CAP_NAME  # minicap截图保存到电脑的路径
+MNC_CAP_PATH = 'temp_{}.png'  # minicap截图保存到电脑的路径
 MNC_LOCAL_NAME = 'minicap_{}'  # minicap开放的端口名字
 MNC_INSTALL_PATH = "./static/stf_libs/{}/minicap"  # abi_version  minicap安装文件路径
 MNC_SO_INSTALL_PATH = "./static/stf_libs/minicap-shared/aosp/libs/android-{}/{}/minicap.so"  # sdk,abi version

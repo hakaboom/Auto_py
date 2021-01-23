@@ -4,6 +4,8 @@ import re
 import sys
 import time
 import queue
+import subprocess
+from typing import Union, Tuple, IO, ByteString
 from threading import Thread, Event
 
 
@@ -52,14 +54,17 @@ class AdbError(Exception):
         This is AdbError BaseError
         When ADB have something wrong
     """
-
-    def __init__(self, stdout, stderr):
-        self.stdout = stdout
-        self.stderr = stderr
+    def __init__(self, stdout: bytes, stderr: bytes):
+        self.stdout = stdout.decode(get_std_encoding(stdout)).rstrip()
+        self.stderr = stdout.decode(get_std_encoding(stderr)).rstrip()
 
     def __str__(self):
+        if self.stderr.find('No such file or directory'):
+            return self.no_file_or_directory()
         return "stdout[%s] stderr[%s]" % (self.stdout, self.stderr)
 
+    def no_file_or_directory(self):
+        return 'check the directory[%s]' % re.compile(r"'.+?'").search(self.stderr).group()
 
 class NonBlockingStreamReader:
 

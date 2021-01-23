@@ -25,7 +25,7 @@ class Android(object):
             self.minitouch = Minitouch(self.adb)
             self.touch_method = TOUCH_METHOD.MINITOUCH
         else:
-            self.adbtouch = ADBTOUCH()
+            self.adbtouch = ADBTOUCH(self.adb)
             self.touch_method = TOUCH_METHOD.ADBTOUCH
 
     def screenshot(self, Rect: Tuple[int, int, int, int] = None):

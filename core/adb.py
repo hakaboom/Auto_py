@@ -200,7 +200,7 @@ class ADB(object):
         """
         if self.device_id and ':' in self.device_id:
             connect_result = self.cmd("connect %s" % self.device_id)
-            logger.info(connect_result)
+            logger.info(connect_result.rstrip())
 
     def disconnect(self):
         """
@@ -501,6 +501,7 @@ class ADB(object):
             imgData = imgData[index: end]
             imgData = imgData.reshape(Rect[3], Rect[2], 4)
         else:
+            imgData = imgData[:width*height*4]
             imgData = imgData.reshape(width, height, 4)
         imgData = imgData[:, :, ::-1][:, :, 1:4]  # imgData中rgbA转为Abgr,并截取bgr
         cv2.imwrite(ADB_CAP_NAME.format(self.get_device_id()), imgData)

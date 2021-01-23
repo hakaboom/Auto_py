@@ -63,10 +63,10 @@ class _Minitouch(transform):
         """ push specific minitouch """
         mnt_path = MNT_INSTALL_PATH.format(self._abi_version)
         # push and grant
-        self.adb.start_cmd(['push', mnt_path, self.MNT_HOME])
+        self.adb.push(mnt_path, self.MNT_HOME)
         time.sleep(1)
         self.adb.start_shell(['chmod', '777', self.MNT_HOME])
-        logger.debug('minicap installed in {}', self.MNT_HOME)
+        logger.info('minicap installed in {}', self.MNT_HOME)
 
     def set_minitouch_port(self):
         """
