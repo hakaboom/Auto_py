@@ -14,9 +14,9 @@ from core.utils import str2byte
 
 class transform(object):
     """通过minitouch的max_x,max_y与屏幕适配"""
-    def __init__(self, max_x: int = 0, max_y: int = 0, orientation: int = 1):
+    def __init__(self, max_x: int = 0, max_y: int = 0, orientation: int = 1, screen_size: dict = None):
         self.event_size = {'width': max_x, 'height': max_y}
-        self.screen_size = {'width': 1920, 'height': 1080}
+        self.screen_size = screen_size
         self.event_scale = self.event2windows()
         self.orientation = orientation
 
@@ -57,7 +57,12 @@ class _Minitouch(transform):
         self.max_x = self.max_y = self.MNT_PORT = 0
         self.set_minitouch_port()
         self.start_minitouch_server()
-        super(_Minitouch, self).__init__(max_x=self.max_x, max_y=self.max_y, orientation=1)
+        super(_Minitouch, self).__init__(max_x=self.max_x, max_y=self.max_y, orientation=1,
+                                         screen_size=self._get_screen_size())
+
+    def _get_screen_size(self):
+        x, y = self.adb.get_screen_size()
+        return {'width': x, 'height': y}
 
     def _push_target_mnt(self):
         """ push specific minitouch """
@@ -75,10 +80,9 @@ class _Minitouch(transform):
         """
         self._is_mnt_install()
         self.adb.set_forward('localabstract:%s' % self.MNT_LOCAL_NAME)
-        index = self.adb._local_in_forwards(remote='localabstract:%s' % self.MNT_LOCAL_NAME)
-        if not index[0]:
-            raise logger.error('minitouch port not set: local_name{}', self.MNT_LOCAL_NAME)
-        self.MNT_PORT = int(re.compile(r'tcp:(\d+)').findall(self.adb._forward_local_using[index[1]]['local'])[0])
+        self.MNT_PORT = self.adb.get_forward_port(self.MNT_LOCAL_NAME)
+        if not self.MNT_PORT:
+            raise logger.error('minicap port not set: local_name{}', self.MNT_LOCAL_NAME)
 
     def start_minitouch_server(self):
         # 如果之前服务在运行,则销毁
@@ -99,7 +103,8 @@ class _Minitouch(transform):
         version = re.findall(r'(\d+)', socket_out.readline())
         # ^ <max-contacts> <max-x> <max-y> <max-pressure>
         max_contacts, max_x, max_y, max_pressure = re.findall(r'(\d+)', socket_out.readline())
-        self.max_x, self.max_y = int(max_x)/10, int(max_y)/10
+        self.max_x, self.max_y = int(max_x), int(max_y)
+
         # $ <pid>
         pid = re.findall(r'(\d+)', socket_out.readline())
         self.client = client
@@ -145,7 +150,7 @@ class Minitouch(_Minitouch):
         x, y = self.transform(x, y)
         if x > self.max_x or y > self.max_y:
             raise OverflowError('坐标不能大于max值, x={},y={},max_x={},max_y={}'.format(x, y, self.max_x, self.max_y))
-        s = 'd {} {} {} {}\nc\n'.format(index, x*10, y*10, pressure)
+        s = 'd {} {} {} {}\nc\n'.format(index, x, y, pressure)
         self.send(s)
 
     def up(self, x: int, y: int, index: int = 0):
@@ -184,17 +189,17 @@ class Minitouch(_Minitouch):
                                 format(end_x, end_y, self.max_x, self.max_y))
 
         x, y = 0, 0
-        t = ["d {} {} {} {}\nc\n".format(index, start_x * 10, start_y * 10, pressure)]
+        t = ["d {} {} {} {}\nc\n".format(index, start_x, start_y, pressure)]
         for i in range(spacing, 100, spacing):
             i = i/100
             x = round((1-i)*start_x + i*end_x)
             y = round((1-i)*start_y + i*end_y)
-            t.append("m {} {} {} {}\nc\nw {}\n".format(index, x * 10, y * 10, pressure, duration))
+            t.append("m {} {} {} {}\nc\nw {}\n".format(index, x, y, pressure, duration))
         # 如果没移动完
         if x < end_x or y < end_y:
             x = round(x + (end_x - x))
             y = round(y + (end_y - y))
-            t.append("m {} {} {} {}\nc\nw {}\n".format(index, x * 10, y * 10, pressure, duration))
+            t.append("m {} {} {} {}\nc\nw {}\n".format(index, x, y, pressure, duration))
         t.append("u {}\nc\n".format(index))
         self.send(''.join(t))
 

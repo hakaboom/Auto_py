@@ -4,8 +4,9 @@ import re
 import math
 import time
 from core.adb import ADB
+from loguru import logger
 
-"""太慢了"""
+
 class Touch_event(object):
     def __init__(self, event_path: str, event_size: dict, screen_size: dict, orientation: int = 1):
         self.event_id = 1
@@ -62,66 +63,69 @@ class Touch(object):
         函数内时间单位为ms,间隔最好不要低于50ms
         就是使用setevent,不写注释了
     """
+
     def __init__(self, adb: ADB, orientation: int = 1):
         self.adb = adb
-        self.event_path = self._get_event_path()
-        self.event_size = self._get_event_size()
-        self.screen_size = {'width': 1280, 'height': 720}
+        self.event_path, self.event_size = self._get_event()
+        self.screen_size = self._get_screen_size()
         self.Touch_event = Touch_event(event_path=self.event_path, event_size=self.event_size,
                                        screen_size=self.screen_size, orientation=orientation)
 
-    def _get_event_size(self):
-        """获取event文件中的最大宽,高"""
-        devices = self.adb.raw_shell(['getevent -p', self.event_path])
-        for i in devices.split('\n'):
-            i = i.rstrip()
-            if i.find('0035  :') > -1:
-                width = int(re.findall(r'max (.+?),', i)[0])
-                continue
-            if i.find('0036  :') > -1:
-                height = int(re.findall(r'max (.+?),', i)[0])
-                continue
+    def _get_screen_size(self):
+        x, y = self.adb.get_screen_size()
+        return {'width': x, 'height': y}
+
+    def _get_event(self):
+        """获取包含0035,0036的event文件"""
+        devices = self.adb.raw_shell(['getevent', '-p'])
+        # 按照add device拆分
+        patter = re.compile(r'add device [\s\S]+?input props:')
+        device = [*patter.findall(devices)]
+
+        # 单独拆分出events:
+        eventlist = []
+        patter = re.compile(r'events:[\s\S]+?input props:')
+        for i in device:
+            events = patter.findall(i)
+            eventlist.append(events and events[0] or {})
+        # 找出包含ABS (0003): 的event
+        patter = re.compile(r'ABS \(\d+?\):[\s\S]+?input props')
+        for index, value in enumerate(eventlist):
+            s = patter.findall(value)
+            if s:  # 找到ABS之后需要找到0035和0036项目
+                ABS = str(s[0])
+                patter = re.compile(r'(0035|0036)  :[\s\S]+?max (.+?),')
+                for i in ABS.splitlines():
+                    s = patter.findall(i)
+                    if s:
+                        if s[0][0] == '0035':
+                            width = int(s[0][1])
+                        if s[0][0] == '0036':
+                            height = int(s[0][1])
+                path = re.findall('add device \d: (.+?)$', str(device[index]).splitlines()[0])[0]
         if width < height:
             width, height = height, width
-        width = math.ceil(width / 10)
-        height = math.ceil(height / 10)
-        return {'width': width, 'height': height}
+        logger.info('get event path:{}, eventSize(width={},height={})', path, width, height)
+        return path, {'width': width, 'height': height}
 
-    def _get_event_path(self):
-        """获取event文件位置"""
-        devices = self.adb.raw_shell('cat /proc/bus/input/devices')
-        t = [{}]
-        for i in devices.split('\n'):
-            l = i.split(': ')
-            if len(l) == 1:
-                t.append({})
-            else:
-                t[len(t) - 1][l[0]] = l[1].rstrip()
-        for i in enumerate(t):
-            if len(i[1]) == 0:
-                pass
-            else:
-                if i[1]['N'] == 'Name="input"':
-                    return '/dev/input/' + re.findall(r'event\d+', i[1]['H'])[0]
-
-    def down(self, x: int, y: int, index: int = 1):
+    def _build_down(self,  x: int, y: int, index: int = 1):
         x, y = self.Touch_event.transform(x, y)
         eventPath = self.Touch_event.event_path
         event_id = self.Touch_event.event_id
         self.Touch_event.add_event_id()
         self.Touch_event.index_down(index)
         t = (
-                'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
-                'sendevent {} {} {} {}'.format(eventPath, 3, 57, event_id),
-                'sendevent {} {} {} {}'.format(eventPath, 1, 330, 1),
-                'sendevent {} {} {} {}'.format(eventPath, 3, 58, 2),
-                'sendevent {} {} {} {}'.format(eventPath, 3, 53, int(x * 10)),
-                'sendevent {} {} {} {}'.format(eventPath, 3, 54, int(y * 10)),
-                'sendevent {} 0 0 0'.format(eventPath),
-            )
-        self.adb.start_shell('&&'.join(t))
+            'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
+            'sendevent {} {} {} {}'.format(eventPath, 3, 57, event_id),
+            'sendevent {} {} {} {}'.format(eventPath, 1, 330, 1),
+            'sendevent {} {} {} {}'.format(eventPath, 3, 58, 2),
+            'sendevent {} {} {} {}'.format(eventPath, 3, 53, int(x)),
+            'sendevent {} {} {} {}'.format(eventPath, 3, 54, int(y)),
+            'sendevent {} 0 0 0'.format(eventPath),
+        )
+        return '&&'.join(t)
 
-    def up(self, x: int, y: int, index: int = 1):
+    def _build_up(self, x: int, y: int, index: int = 1):
         x, y = self.Touch_event.transform(x, y)
         eventPath = self.Touch_event.event_path
         index_count = self.Touch_event.index_count
@@ -139,42 +143,28 @@ class Touch(object):
                 'sendevent {} {} {} {}'.format(eventPath, 1, 330, 0),
                 'sendevent {} 0 0 0'.format(eventPath),
             )
-        self.adb.start_shell('&&'.join(t))
+        return '&&'.join(t)
+
+    def down(self, x: int, y: int, index: int = 1):
+        s = self._build_down(x, y, index)
+        self.adb.start_shell(s)
+
+    def up(self, x: int, y: int, index: int = 1):
+        s = self._build_up(x, y, index)
+        self.adb.start_shell(s)
 
     def click(self, x: int, y: int, index: int = 0, duration: int = 20):
-        x, y = self.Touch_event.transform(x, y)
-        eventPath = self.Touch_event.event_path
-        event_id = self.Touch_event.event_id
-        index_count = self.Touch_event.index_count
-        self.Touch_event.add_event_id()
-        self.Touch_event.index_down(index)
-        t1 = [
-                'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
-                'sendevent {} {} {} {}'.format(eventPath, 3, 57, event_id),
-                'sendevent {} {} {} {}'.format(eventPath, 1, 330, 1),
-                'sendevent {} {} {} {}'.format(eventPath, 3, 58, 2),
-                'sendevent {} {} {} {}'.format(eventPath, 3, 53, int(x * 10)),
-                'sendevent {} {} {} {}'.format(eventPath, 3, 54, int(y * 10)),
-                'sendevent {} 0 0 0;'.format(eventPath),
-            ]
-        if index_count > 1:
-            t2 = ([
-                'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
-                'sendevent {} {} {} {}'.format(eventPath, 3, 57, -1),
-                'sendevent {} 0 0 0&&'.format(eventPath),
-            ])
-        else:
-            t2 = ([
-                'sendevent {} {} {} {}'.format(eventPath, 3, 47, index - 1),
-                'sendevent {} {} {} {}'.format(eventPath, 3, 57, -1),
-                'sendevent {} {} {} {}'.format(eventPath, 1, 330, 0),
-                'sendevent {} 0 0 0'.format(eventPath),
-            ])
-        self.adb.start_shell('&&'.join(t1) + '&&'.join(t2))
-        self.sleep(duration)
+        down = self._build_down(x, y, index)
+        up = self._build_up(x, y, index)
+        self.adb.start_shell('{}&&{}'.format(down, up))
+        logger.debug('adb touch point:(x={},y={})', x, y)
 
     def long_click(self, x: int, y: int, index: int = 1, duration: int = 500):
-        self.click(x, y, index, duration)
+        down = self._build_down(x, y, index)
+        up = self._build_up(x, y, index)
+        self.adb.start_shell('&&'.join(down))
+        self.sleep(duration)
+        self.adb.start_shell('&&'.join(up))
 
     def sleep(self, duration: int = 50):
         time.sleep(duration / 1000)

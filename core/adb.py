@@ -26,7 +26,7 @@ class ADB(object):
         self.adb_path = adb_path or self.builtin_adb_path()
         self._set_cmd_options(host, port)
         self.connect()
-
+        self._event_path = None  # event信息
         self._forward_local_using = self.get_forwards()  # 已经使用的端口
         self._display_info = []  # 需要通过minicap模块获取
         self._sdk_version = int(self.sdk_version())
@@ -139,7 +139,7 @@ class ADB(object):
         close_pipe(proc.stderr)
 
     def cmd(self, cmds: Union[list, str], devices: bool = True, ensure_unicode: bool = True, timeout: int = None,
-            skip_error: bool = False) -> Union[IO, str]:
+            skip_error: bool = False) -> bytes:
         """
         用cmds创建adb命令,并且返回stdout
 
@@ -208,7 +208,7 @@ class ADB(object):
              None
         """
         if self.device_id and ':' in self.device_id and (force or self.get_status() != 'devices'):
-            connect_result = self.cmd("connect %s" % self.device_id)
+            connect_result = self.cmd("connect %s" % self.device_id, devices=False)
             logger.info(connect_result.rstrip())
 
     def disconnect(self):
@@ -219,7 +219,7 @@ class ADB(object):
              None
         """
         if ':' in self.device_id:
-            self.cmd("disconnect %s" % self.device_id)
+            self.cmd("disconnect %s" % self.device_id, devices=False)
             logger.info("disconnect to %s" % self.device_id)
 
     def get_status(self):
@@ -373,12 +373,12 @@ class ADB(object):
             bool, if True return index in _forward_local_using
         """
         l = self.get_forwards()
-        for i in range(len(l)):
+        for i, value in enumerate(l):
             if local:
-                if l[i]['local'] == local:
+                if value['local'] == local:
                     return True, i
             if remote:
-                if l[i]['remote'] == remote:
+                if value['remote'] == remote:
                     return True, i
         return False, None
 
@@ -519,7 +519,7 @@ class ADB(object):
             install_options = []
             if replace:
                 install_options.append('-r')
-        cmds = ["install",] + install_options + [filepath]
+        cmds = ["install", ] + install_options + [filepath]
         out = self.cmd(cmds)
         logger.info('install app:%s' % filepath)
         if re.search(r"Failure \[.*?\]", out):
@@ -566,7 +566,7 @@ class ADB(object):
         # adb方式获取DPI
         wm_dpi = self.raw_shell(['wm', 'density'])
         wm_dpi = re.findall(r'Physical density: (\d+)\r', wm_dpi)
-        print(wm_size,wm_dpi)
+        print(wm_size, wm_dpi)
 
     def screenshot(self, Rect: Tuple[int, int, int, int] = None):
         """
@@ -589,10 +589,10 @@ class ADB(object):
         imgData = np.fromfile(raw_remote_path, dtype=np.uint8)
         imgData = imgData[slice(12, len(imgData))]
         if Rect:
-            if Rect[0] > height or Rect[1] > width or Rect[0]+Rect[2] > height or Rect[1]+Rect[3] > width:
+            if Rect[0] > height or Rect[1] > width or Rect[0] + Rect[2] > height or Rect[1] + Rect[3] > width:
                 raise OverflowError('Rect不能超出屏幕 {}'.format(Rect))
             index = Rect[0] * 4 + Rect[1] * height * 4  # 从图片左上角开始,y计算公式y*height*4,x计算公式x*4, 4表示4通道
-            end = (Rect[0]+Rect[2]) * 4 + (Rect[1]+Rect[3]-1) * height * 4
+            end = (Rect[0] + Rect[2]) * 4 + (Rect[1] + Rect[3] - 1) * height * 4
             imgData = imgData[index: end]
             imgData = imgData.reshape(Rect[3], Rect[2], 4)
         else:
@@ -630,3 +630,11 @@ class ADB(object):
     def app_is_running(self, name: str) -> bool:
         """判断应用是否在运行"""
         shell = "ps | grep -w {}".format(name)
+
+    def get_screen_size(self) -> Tuple[int, int]:
+        wm_size = self.raw_shell(['wm', 'size'])
+        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
+        x, y = int(wm_size[0][0]), int(wm_size[0][1])
+        if x < y:
+            x, y = y, x
+        return x, y

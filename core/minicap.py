@@ -5,7 +5,7 @@ import json
 import time
 import socket
 import struct
-from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD,MNC_SO_HOME, MNC_CAP_PATH,
+from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME, MNC_CAP_PATH,
                            MNC_LOCAL_NAME, MNC_INSTALL_PATH, MNC_SO_INSTALL_PATH)
 from core.adb import ADB
 
@@ -28,13 +28,14 @@ class _Minicap(object):
         self.MNC_SO_HOME = MNC_SO_HOME
         self.MNC_CMD = MNC_CMD
         self.MNC_LOCAL_NAME = MNC_LOCAL_NAME.format(self.adb.get_device_id())
+        self.MNC_PORT = 0
+        self.display_info = None
         # 因为字符串中有:的话没法保存文件 所以替换字符串中的:
         self.MNC_CAP_PATH = MNC_CAP_PATH.format(self.adb.get_device_id().replace(':', '_'))
         self._abi_version = self.adb.abi_version()
         self._sdk_version = self.adb.sdk_version()
         self.set_minicap_port()
         self.start_mnc_server()
-        self.frame_gen = None
 
     def set_minicap_port(self):
         """
@@ -78,7 +79,7 @@ class _Minicap(object):
         if not self.adb.check_file(self.HOME, 'minicap.so'):
             logger.error('{} minicap.so is not install in {}', self.adb.device_id, self.adb.get_device_id())
             self._push_target_mnc_so()
-        logger.info('{} minicap and minicap.so is install', self.adb.device_id,)
+        logger.info('{} minicap and minicap.so is install', self.adb.device_id, )
 
     def get_display_info(self):
         """
@@ -118,16 +119,16 @@ class _Minicap(object):
         """
         # 如果之前服务在运行,则销毁
         self.adb.kill_process(name=MNC_HOME)
-
         display_info = self.get_display_info()
         self.display_info = display_info
         proc = self.adb.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
-                                    '%dx%d@%dx%d/%d 2>&1' % (display_info['width'], display_info['height'],
-                                                       display_info['width'], display_info['height'],
-                                                       display_info['rotation'])])
+                                     '%dx%d@%dx%d/%d 2>&1' % (display_info['width'], display_info['height'],
+                                                              display_info['width'], display_info['height'],
+                                                              display_info['rotation'])])
         logger.info('%s minicap server is running' % self.adb.get_device_id())
         time.sleep(.5)
         return proc
+
 
 class Minicap(_Minicap):
     def screenshot(self):

@@ -11,7 +11,6 @@ from typing import Union, Tuple
 
 
 class Android(object):
-    """不应该暴露adb接口出来???"""
     def __init__(self, device_id=None, adb_path=None, host='127.0.0.1', port=5037,
                  touch_method: str = 'minitouch', cap_method: str = 'minicap'):
         self.adb = ADB(device_id, adb_path, host, port)
@@ -31,7 +30,6 @@ class Android(object):
         else:
             self.adbtouch = ADBTOUCH(self.adb)
             self.touch_method = TOUCH_METHOD.ADBTOUCH
-
 
     def screenshot(self, Rect: Tuple[int, int, int, int] = None):
         if self.cap_method == CAP_METHOD.MINICAP:
