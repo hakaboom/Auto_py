@@ -23,10 +23,11 @@ python3.8.7（开发的时候用的这个版本）
 - [ ] minicap服务开启过程中,如果手机进行了旋转,截图会出现问题
 - [ ] 行为树的重新构建
 - [ ]  编译opencv-cudn
-- [ ]  opencv使用yolov4识别
 - [ ]  opencv进行图像识别
 - [ ]  非root权限下的运行
-
+  
+~~opencv使用yolov4识别 !编译不出gpu版本,CPU识别0.5秒一次,索性不要了~~
+  
 ## 总结
 - 目前截图的几种方式
   - `adb shell screencap` 保存为raw格式文件,pull到电脑,通过cv2转换为png,整体时长大约在200ms.
