@@ -7,7 +7,8 @@ import queue
 import subprocess
 from typing import Union, Tuple, IO, ByteString
 from threading import Thread, Event
-
+from core.constant import filter_level
+from loguru import logger as loguru
 
 def split_cmd(cmds):
     """
@@ -54,17 +55,26 @@ class AdbError(Exception):
         This is AdbError BaseError
         When ADB have something wrong
     """
-    def __init__(self, stdout: bytes, stderr: bytes):
+    def __init__(self, stdout: bytes, stderr: bytes, cmds: list):
         self.stdout = stdout.decode(get_std_encoding(stdout)).rstrip()
-        self.stderr = stdout.decode(get_std_encoding(stderr)).rstrip()
+        self.stderr = stderr.decode(get_std_encoding(stderr)).rstrip()
+        self.cmds = cmds
 
     def __str__(self):
-        if self.stderr.find('No such file or directory'):
-            return self.no_file_or_directory()
-        return "stdout[%s] stderr[%s]" % (self.stdout, self.stderr)
+        # device not found
+        # re.findall('device \'(.+?)\' not found', self.stderr)
+        return "stdout[%s],stderr[%s]\ncmds[%s]" % (self.stdout, self.stderr, ' '.join(self.cmds))
 
-    def no_file_or_directory(self):
-        return 'file: %s does not exists' % re.compile(r"'.+?'").search(self.stderr).group()
+
+def initLogger():
+    loguru.remove()  # 清除自带的
+    loguru.add(sys.stdout, format="<green>{time:YYYY-MM-dd HH:mm:ss.SSS}</green> <red>|</red> "
+                                  "<level><b>{level}</b></level>     <red>|</red> "
+                                  "<cyan>{name}</cyan><red>:</red>"
+                                  "<cyan>{function}</cyan><red>:</red>"
+                                  "<cyan>{line}</cyan> <red>-</red> "
+                                  "<level>{message}</level>",
+               colorize=True, filter=filter_level)
 
 
 class NonBlockingStreamReader:

@@ -66,10 +66,14 @@ class Touch(object):
 
     def __init__(self, adb: ADB, orientation: int = 1):
         self.adb = adb
-        self.event_path, self.event_size = self._get_event()
+        path, name, width, height = self._get_event()
+        self.event_path = path
+        self.event_name = name
+        self.event_size = {'width': width, 'height': height}
         self.screen_size = self._get_screen_size()
         self.Touch_event = Touch_event(event_path=self.event_path, event_size=self.event_size,
                                        screen_size=self.screen_size, orientation=orientation)
+        logger.info('adb_touch init ,event_path:{}'.format(path))
 
     def _get_screen_size(self):
         x, y = self.adb.get_screen_size()
@@ -79,34 +83,17 @@ class Touch(object):
         """获取包含0035,0036的event文件"""
         devices = self.adb.raw_shell(['getevent', '-p'])
         # 按照add device拆分
-        patter = re.compile(r'add device [\s\S]+?input props:')
-        device = [*patter.findall(devices)]
-
-        # 单独拆分出events:
-        eventlist = []
-        patter = re.compile(r'events:[\s\S]+?input props:')
-        for i in device:
-            events = patter.findall(i)
-            eventlist.append(events and events[0] or {})
-        # 找出包含ABS (0003): 的event
-        patter = re.compile(r'ABS \(\d+?\):[\s\S]+?input props')
-        for index, value in enumerate(eventlist):
-            s = patter.findall(value)
-            if s:  # 找到ABS之后需要找到0035和0036项目
-                ABS = str(s[0])
-                patter = re.compile(r'(0035|0036)  :[\s\S]+?max (.+?),')
-                for i in ABS.splitlines():
-                    s = patter.findall(i)
-                    if s:
-                        if s[0][0] == '0035':
-                            width = int(s[0][1])
-                        if s[0][0] == '0036':
-                            height = int(s[0][1])
-                path = re.findall('add device \d: (.+?)$', str(device[index]).splitlines()[0])[0]
+        patter = re.compile(r'add device.+:(.+?)\s+name:\s+\"(.+?)\"\s+[\s\S]{1,9999}0035.+:(.+?)\n.+0036.+:(.+?)\n')
+        b = patter.findall(devices)
+        if not b:
+            raise ValueError("input event not found\n{}".format(devices))
+        path, name, width, height = b[0]
+        patter = re.compile(r'[\s\S]+?max (.+?),')
+        width = int(patter.findall(width)[0])
+        height = int(patter.findall(height)[0])
         if width < height:
             width, height = height, width
-        logger.info('get event path:{}, eventSize(width={},height={})', path, width, height)
-        return path, {'width': width, 'height': height}
+        return path, name, width, height
 
     def _build_down(self,  x: int, y: int, index: int = 1):
         x, y = self.Touch_event.transform(x, y)

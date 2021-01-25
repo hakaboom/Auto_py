@@ -18,7 +18,7 @@ import numpy as np
 from loguru import logger
 
 
-class ADB(object):
+class _ADB(object):
     """adb object class"""
 
     def __init__(self, device_id: str = None, adb_path: str = None, host='127.0.0.1', port=5037):
@@ -174,7 +174,7 @@ class ADB(object):
             # adb error
             logger.error("adb connection {stdout} {stderr}", stdout=stdout, stderr=stderr)
             if not skip_error:
-                raise AdbError(stdout, stderr)
+                raise AdbError(stdout, stderr, cmds)
         return stdout
 
     def devices(self, state: bool = None) -> list:
@@ -303,26 +303,6 @@ class ADB(object):
             logger.info('{} {} has been forward', self._forward_local_using[index]['local'],
                         self._forward_local_using[index]['remote'])
 
-    def get_forwards(self) -> list:
-        """
-        command adb forward --list
-
-        :return:
-            返回一个包含占用信息的列表,每个包含键值local和remote
-        """
-        l = []
-        out = self.cmd(['forward', '--list'])
-        for line in out.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            cols = line.split()
-            if len(cols) != 3:
-                continue
-            device_id, local, remote = cols
-            l.append({'local': local, 'remote': remote})
-        return l
-
     def get_available_forward_local(self) -> int:
         """
         获取一个可用端口
@@ -343,28 +323,6 @@ class ADB(object):
             return self.get_available_forward_local()
         return port
 
-    def set_forward(self, remote: str):
-        """
-        通过get_available_forward_local获取可用端口,并与remote绑定
-
-        Args:
-            remote: 要与local绑定的设备端口 localabstract:{remote}"
-
-        :return:
-            localport:要转发的本地端口 tcp:<local>
-            remote:要与local绑定的设备端口 localabstract:{remote}"`
-        """
-        localport = self.get_available_forward_local()
-        self.forward('tcp:%s' % localport, remote)
-        return localport, remote
-
-    def get_forward_port(self, remote: str):
-        """获取开放端口的端口号"""
-        index = self._local_in_forwards(remote='localabstract:%s' % remote)
-        if not index[0]:
-            logger.error('')
-        return int(re.compile(r'tcp:(\d+)').findall(self._forward_local_using[index[1]]['local'])[0])
-
     def _local_in_forwards(self, local: str = None, remote: str = None) -> Tuple[bool, int]:
         """
         检查local是否已经启用
@@ -381,50 +339,6 @@ class ADB(object):
                 if value['remote'] == remote:
                     return True, i
         return False, None
-
-    def remove_forward(self, local=None):
-        """
-        运行adb forward -- remove
-        :param local:
-            tcp port,如不填写则清楚所以绑定
-        :return:
-            None
-        """
-        if local:
-            cmds = ['forward', '--remove', local]
-        else:
-            cmds = ['forward', '--remove-all']
-        self.cmd(cmds)
-        local_using, index = local and self._local_in_forwards(local) or (False, -1)
-        # 删除在_forward_local_using里的记录
-        if local_using:
-            del self._forward_local_using[index]
-
-    def push(self, local, remote):
-        """
-        运行adb push
-        :param local:
-            需要发送的文件路径
-        :param remote:
-            发送到设备上的路径
-        :return:
-            None
-        """
-        if not os.path.isfile(local):
-            raise RuntimeError("file: %s does not exists" % (repr(local)))
-        self.cmd(["push", local, remote], ensure_unicode=False)
-
-    def pull(self, remote, local):
-        """
-        运行adb pull
-        :param remote:
-            设备上的路径
-        :param local:
-            pull到本地的路径
-        :return:
-            None
-        """
-        self.cmd(["pull", remote, local], ensure_unicode=False)
 
     def abi_version(self):
         """ get abi (application binary interface) """
@@ -558,6 +472,41 @@ class ADB(object):
     def get_device_id(self) -> str:
         return self.device_id
 
+    def start_app(self, package: str, activity: str = None):
+        """
+        commands 'adb shell monkey'
+        if activity is None then commands 'adb shell am start'
+        :param package: package name
+        :param activity: activity name
+        :return: None
+        """
+        if activity:
+            self.shell(['am', 'start', '-n', '%s/%s.%s' % (package, package, activity)])
+        else:
+            self.shell(['monkey', '-p', package, '-c', 'android.intent.category.LAUNCHER', '1'])
+        logger.info('start app:{}', package)
+
+    def get_foreground_app(self) -> str:
+        """获取前台应用包名"""
+        shell = "dumpsys window windows | grep mCurrentFocus | cut -d'/' -f1 | rev | cut -d' ' -f1 | rev"
+        package = self.raw_shell(shell).rstrip()
+        logger.info("'{}' is running in the foreground", package)
+        return package
+
+    def app_is_running(self, name: str) -> bool:
+        """判断应用是否在运行"""
+        shell = "ps | grep -w {}".format(name)
+
+
+class _Device(_ADB):
+    def get_screen_size(self) -> Tuple[int, int]:
+        wm_size = self.raw_shell(['wm', 'size'])
+        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
+        x, y = int(wm_size[0][0]), int(wm_size[0][1])
+        if x < y:
+            x, y = y, x
+        return x, y
+
     def get_display_info(self):
         """adb获取屏幕信息"""
         # adb获取分辨率
@@ -606,35 +555,92 @@ class ADB(object):
 
         return imgData
 
-    def start_app(self, package: str, activity: str = None):
+    def get_forwards(self) -> list:
         """
-        commands 'adb shell monkey'
-        if activity is None then commands 'adb shell am start'
-        :param package: package name
-        :param activity: activity name
-        :return: None
+        command adb forward --list
+
+        :return:
+            返回一个包含占用信息的列表,每个包含键值local和remote
         """
-        if activity:
-            self.shell(['am', 'start', '-n', '%s/%s.%s' % (package, package, activity)])
+        l = []
+        out = self.cmd(['forward', '--list'])
+        for line in out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            cols = line.split()
+            if len(cols) != 3:
+                continue
+            device_id, local, remote = cols
+            l.append({'local': local, 'remote': remote})
+        return l
+
+    def push(self, local, remote):
+        """
+        运行adb push
+        :param local:
+            需要发送的文件路径
+        :param remote:
+            发送到设备上的路径
+        :return:
+            None
+        """
+        if not os.path.isfile(local):
+            raise RuntimeError("file: %s does not exists" % (repr(local)))
+        self.cmd(["push", local, remote], ensure_unicode=False)
+
+    def pull(self, remote, local):
+        """
+        运行adb pull
+        :param remote:
+            设备上的路径
+        :param local:
+            pull到本地的路径
+        :return:
+            None
+        """
+        self.cmd(["pull", remote, local], ensure_unicode=False)
+
+    def set_forward(self, remote: str):
+        """
+        通过get_available_forward_local获取可用端口,并与remote绑定
+
+        Args:
+            remote: 要与local绑定的设备端口 localabstract:{remote}"
+
+        :return:
+            localport:要转发的本地端口 tcp:<local>
+            remote:要与local绑定的设备端口 localabstract:{remote}"`
+        """
+        localport = self.get_available_forward_local()
+        self.forward('tcp:%s' % localport, remote)
+        return localport, remote
+
+    def get_forward_port(self, remote: str):
+        """获取开放端口的端口号"""
+        index = self._local_in_forwards(remote='localabstract:%s' % remote)
+        if not index[0]:
+            logger.error('')
+        return int(re.compile(r'tcp:(\d+)').findall(self._forward_local_using[index[1]]['local'])[0])
+
+    def remove_forward(self, local=None):
+        """
+        运行adb forward -- remove
+        :param local:
+            tcp port,如不填写则清楚所以绑定
+        :return:
+            None
+        """
+        if local:
+            cmds = ['forward', '--remove', local]
         else:
-            self.shell(['monkey', '-p', package, '-c', 'android.intent.category.LAUNCHER', '1'])
-        logger.info('start app:{}', package)
+            cmds = ['forward', '--remove-all']
+        self.cmd(cmds)
+        local_using, index = local and self._local_in_forwards(local) or (False, -1)
+        # 删除在_forward_local_using里的记录
+        if local_using:
+            del self._forward_local_using[index]
 
-    def get_foreground_app(self) -> str:
-        """获取前台应用包名"""
-        shell = "dumpsys window windows | grep mCurrentFocus | cut -d'/' -f1 | rev | cut -d' ' -f1 | rev"
-        package = self.raw_shell(shell).rstrip()
-        logger.info("'{}' is running in the foreground", package)
-        return package
 
-    def app_is_running(self, name: str) -> bool:
-        """判断应用是否在运行"""
-        shell = "ps | grep -w {}".format(name)
-
-    def get_screen_size(self) -> Tuple[int, int]:
-        wm_size = self.raw_shell(['wm', 'size'])
-        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
-        x, y = int(wm_size[0][0]), int(wm_size[0][1])
-        if x < y:
-            x, y = y, x
-        return x, y
+class ADB(_Device):
+    pass

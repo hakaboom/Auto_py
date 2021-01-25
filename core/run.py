@@ -6,8 +6,11 @@ from core.base_touch import Touch as ADBTOUCH
 from core.minitouch import Minitouch
 from core.constant import TOUCH_METHOD, CAP_METHOD
 from core.Javecap import Javacap
-
+from core.utils import initLogger
 from typing import Union, Tuple
+
+# 初始化loguru
+initLogger()
 
 
 class Android(object):
@@ -21,15 +24,19 @@ class Android(object):
         elif cap_method == 'javacap':
             self.javacap = Javacap(self.adb)
             self.cap_method = CAP_METHOD.JAVACAP
-        else:
+        elif cap_method == 'adbcap':
             self.cap_method = CAP_METHOD.ADBCAP
+        else:
+            raise ValueError("please choice cap_method ('minicap','javacap','adbcap')")
         # touch mode
         if touch_method == 'minitouch':
             self.minitouch = Minitouch(self.adb)
             self.touch_method = TOUCH_METHOD.MINITOUCH
-        else:
+        elif touch_method == 'adbtouch':
             self.adbtouch = ADBTOUCH(self.adb)
             self.touch_method = TOUCH_METHOD.ADBTOUCH
+        else:
+            raise ValueError("please choice touch_method ('minitouch','adbtouch')")
 
     def screenshot(self, Rect: Tuple[int, int, int, int] = None):
         if self.cap_method == CAP_METHOD.MINICAP:

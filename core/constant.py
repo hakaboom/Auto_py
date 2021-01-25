@@ -50,3 +50,13 @@ class CAP_METHOD(object):
     MINICAP = "MINICAP"
     JAVACAP = 'JAVACAP'
     ADBCAP = "ADBCAP"
+
+
+# logger filter_level
+def filter_level(record):
+    """
+    需要过滤的等级
+    'DEBUG' 'INFO' 'SUCCESS' 'WARNING' 'ERROR'
+    """
+    level = ['DEBUG']
+    return record["level"].name not in level
