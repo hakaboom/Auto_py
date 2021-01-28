@@ -9,7 +9,7 @@ from loguru import logger
 
 from core.adb import ADB
 from core.constant import (TEMP_HOME, MNT_HOME, MNT_LOCAL_NAME, MNT_INSTALL_PATH)
-from core.utils import str2byte
+from core.utils.snippet import str2byte
 
 
 class transform(object):

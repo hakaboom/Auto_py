@@ -32,6 +32,7 @@ python3.8.7（开发的时候用的这个版本）
 - 目前截图的几种方式
   - `adb shell screencap` 保存为raw格式文件,pull到电脑,通过cv2转换为png,整体时长大约在200ms.
   - 使用minicap服务,进行socket连接
+  - minicap在静态页面的获取时间额外的长
 
 - 目前点击的几种方式
   - 使用sendevent点击。延迟太高,必须要使用raw_shell,不然会发生奇怪的错误,造成点击失败

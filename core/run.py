@@ -6,7 +6,7 @@ from core.base_touch import Touch as ADBTOUCH
 from core.minitouch import Minitouch
 from core.constant import TOUCH_METHOD, CAP_METHOD
 from core.Javecap import Javacap
-from core.utils import initLogger
+from core.utils.base import initLogger
 from typing import Union, Tuple
 
 # 初始化loguru

@@ -13,7 +13,7 @@ DEFAULT_ADB_PATH = {  # adb.exe路径
 }
 SHELL_ENCODING = 'utf-8'  # adb shell的编码
 ADB_CAP_NAME_RAW = '{}.raw'  # 使用ADB截图时生成raw的文件名
-ADB_CAP_NAME = 'tmp_{}.png'  # 使用ADB截图时png保存到电脑的路径
+ADB_CAP_NAME = './tmp/{}.png'  # 使用ADB截图时png保存到电脑的路径
 ADB_CAP_PATH = '/data/local/tmp/{}'  # 使用ADB截图时在手机上的路径
 
 # minicap

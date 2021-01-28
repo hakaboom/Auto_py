@@ -8,6 +8,7 @@ import struct
 from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME, MNC_CAP_PATH,
                            MNC_LOCAL_NAME, MNC_INSTALL_PATH, MNC_SO_INSTALL_PATH)
 from core.adb import ADB
+from core.utils.safesocket import SafeSocket
 
 import cv2
 import numpy as np
@@ -34,7 +35,7 @@ class _Minicap(object):
         self.MNC_CAP_PATH = MNC_CAP_PATH.format(self.adb.get_device_id().replace(':', '_'))
         self._abi_version = self.adb.abi_version()
         self._sdk_version = self.adb.sdk_version()
-        self.set_minicap_port()
+        # 开启服务
         self.start_mnc_server()
 
     def set_minicap_port(self):
@@ -48,7 +49,7 @@ class _Minicap(object):
         if not self.MNC_PORT:
             raise logger.error('minicap port not set: local_name{}', self.MNC_LOCAL_NAME)
 
-    def _push_target_mnc(self):
+    def push_target_mnc(self):
         """ push specific minicap """
         mnc_path = MNC_INSTALL_PATH.format(self._abi_version)
         # push and grant
@@ -57,7 +58,7 @@ class _Minicap(object):
         self.adb.start_shell(['chmod', '777', self.MNC_HOME])
         logger.info('minicap installed in {}', self.MNC_HOME)
 
-    def _push_target_mnc_so(self):
+    def push_target_mnc_so(self):
         """ push specific minicap.so (they should work together) """
         mnc_so_path = MNC_SO_INSTALL_PATH.format(self._sdk_version, self._abi_version)
         # push and grant
@@ -75,10 +76,10 @@ class _Minicap(object):
         """
         if not self.adb.check_file(self.HOME, 'minicap'):
             logger.error('{} minicap is not install in {}', self.adb.device_id, self.adb.get_device_id())
-            self._push_target_mnc()
+            self.push_target_mnc()
         if not self.adb.check_file(self.HOME, 'minicap.so'):
             logger.error('{} minicap.so is not install in {}', self.adb.device_id, self.adb.get_device_id())
-            self._push_target_mnc_so()
+            self.push_target_mnc_so()
         logger.info('{} minicap and minicap.so is install', self.adb.device_id, )
 
     def get_display_info(self):
@@ -117,31 +118,29 @@ class _Minicap(object):
         :return:
             None
         """
+        self.set_minicap_port()
         # 如果之前服务在运行,则销毁
         self.adb.kill_process(name=MNC_HOME)
-        display_info = self.get_display_info()
-        self.display_info = display_info
+        self.display_info = self.get_display_info()
         proc = self.adb.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
-                                     '%dx%d@%dx%d/%d 2>&1' % (display_info['width'], display_info['height'],
-                                                              display_info['width'], display_info['height'],
-                                                              display_info['rotation'])])
+                                     '%dx%d@%dx%d/%d 2>&1' % (self.display_info['width'], self.display_info['height'],
+                                                              self.display_info['width'], self.display_info['height'],
+                                                              self.display_info['rotation'])])
         logger.info('%s minicap server is running' % self.adb.get_device_id())
         time.sleep(.5)
         return proc
 
 
 class Minicap(_Minicap):
-    def screenshot(self):
+    def _get_frame(self):
         """
-        通过socket读取minicap的图片数据,并且通过cv2生成图片
+        通过socket读取minicap的图片数据,并且通过cv2生成图片,静态页面速度会比adb方法较慢
         :return:
-            cv2.img
+             接收到的图片bytes数据
         """
-        readBannerBytes = 0
-        bannerLength = 2
-        readFrameBytes = 0
-        frameBodyLengthRemaining = 0
-        frameBody = ''
+        stamp = time.time()
+        readBannerBytes, bannerLength, readFrameBytes = 0, 2, 0
+        frameBodyLengthRemaining, frameBody = 0, ''
         banner = {
             'version': 0,
             'length': 0,
@@ -153,14 +152,12 @@ class Minicap(_Minicap):
             'orientation': 0,
             'quirks': 0
         }
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect(('localhost', self.MNC_PORT))
-        self.adb.start_shell([self.MNC_CMD, "-n '{}' -s 2>&1".format(self.MNC_LOCAL_NAME)])
+        s = SafeSocket()
+        s.connect(('127.0.0.1', self.MNC_PORT))
         while True:
-            chunk = client_socket.recv(24000)
+            chunk = s.recv(12000)
             if len(chunk) == 0:
                 continue
-
             cursor = 0
             while cursor < len(chunk):
                 if readBannerBytes < bannerLength:
@@ -185,15 +182,46 @@ class Minicap(_Minicap):
                         frameBody = frameBody + chunk[cursor:(cursor + frameBodyLengthRemaining)]
                         if hex(frameBody[0]) != '0xff' or hex(frameBody[1]) != '0xd8':
                             exit()
-                        img = np.array(bytearray(frameBody))
-                        img = cv2.imdecode(img, 1)
-                        cv2.imwrite(self.MNC_CAP_PATH, img)
-                        client_socket.close()
-                        logger.info('%s screencap' % self.adb.get_device_id())
-                        return img
+                        s.close()
+                        return frameBody, (time.time() - stamp) * 1000
                     else:
                         # else this chunk is still for the current image
                         frameBody = bytes(list(frameBody) + list(chunk[cursor:len(chunk)]))
                         frameBodyLengthRemaining -= (len(chunk) - cursor)
                         readFrameBytes += len(chunk) - cursor
                         cursor = len(chunk)
+
+    def _get_frame_adb(self):
+        """
+        通过adb获取minicap的图片数据,并且通过cv2生成图片
+        :return:
+             接收到的图片bytes数据
+        """
+        stamp = time.time()
+        raw_data = self.adb.raw_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
+                                       '%dx%d@%dx%d/%d -s 2>&1' % (
+                                           self.display_info['width'], self.display_info['height'],
+                                           self.display_info['width'], self.display_info['height'],
+                                           self.display_info['rotation'])], ensure_unicode=False)
+        jpg_data = raw_data.split(b"for JPG encoder" + self.adb.line_breaker)[-1]
+        jpg_data = jpg_data.replace(self.adb.line_breaker, b"\n")
+        return jpg_data, (time.time() - stamp) * 1000
+
+    def bytes2img(self, b):
+        """bytes转换成cv2可读取格式"""
+        img = np.array(bytearray(b))
+        img = cv2.imdecode(img, 1)
+        return img
+
+    def screenshot(self):
+        # 获取当前帧,cv2转换成图片并写入文件
+        frameBody, socket_time = self._get_frame()
+        stamp = time.time()
+        img = self.bytes2img(frameBody)
+        cv2.imwrite(self.MNC_CAP_PATH, img)
+
+        write_time = (time.time() - stamp) * 1000
+        logger.info(
+            "screenshot: socket_time={:.2f}ms, write_time={:.2f}ms,time={:.2f}ms size=({width}x{height}), path={})",
+            socket_time, write_time, socket_time + write_time, self.MNC_CAP_PATH,
+            width=self.display_info['width'], height=self.display_info['height'])

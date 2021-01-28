@@ -11,7 +11,8 @@ import warnings
 import subprocess
 from typing import Union, Tuple, IO
 from core.constant import DEFAULT_ADB_PATH, SHELL_ENCODING, ADB_CAP_PATH, ADB_CAP_NAME, ADB_CAP_NAME_RAW
-from core.utils import split_cmd, split_process_status, get_std_encoding, AdbError
+from core.utils.snippet import split_cmd, split_process_status, get_std_encoding
+from core.error import AdbError
 
 import cv2
 import numpy as np
@@ -30,6 +31,7 @@ class _ADB(object):
         self._forward_local_using = self.get_forwards()  # 已经使用的端口
         self._display_info = []  # 需要通过minicap模块获取
         self._sdk_version = int(self.sdk_version())
+        self._line_breaker = None
         # 截图文件名字
         self._cap_name = ADB_CAP_NAME_RAW.format(device_id.replace(':', '_'))
         # 截图在手机上的路径
@@ -239,6 +241,21 @@ class _ADB(object):
             return None
         else:
             raise AdbError(stdout, stderr)
+
+    @property
+    def line_breaker(self):
+        """
+        Set carriage return and line break property for various platforms and SDK versions
+        Returns:
+            carriage return and line break string
+        """
+        if not self._line_breaker:
+            if self._sdk_version >= 24:
+                line_breaker = os.linesep
+            else:
+                line_breaker = '\r' + os.linesep
+            self._line_breaker = line_breaker.encode("ascii")
+        return self._line_breaker
 
     def start_shell(self, cmds: Union[list, str]) -> start_cmd:
         cmds = ['shell'] + split_cmd(cmds)

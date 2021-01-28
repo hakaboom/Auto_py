@@ -5,7 +5,7 @@ import socket
 import struct
 from core.constant import JAC_LOCAL_NAME, JAC_CAP_PATH
 from core.yosemite import Yosemite
-from core.utils import NonBlockingStreamReader
+from core.utils.nbsp import NonBlockingStreamReader
 from loguru import logger
 
 import cv2
