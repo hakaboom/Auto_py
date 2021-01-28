@@ -1,18 +1,17 @@
 #! usr/bin/python
 # -*- coding:utf-8 -*-
-import re
 import json
+import re
 import time
-import socket
-import struct
-from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME, MNC_CAP_PATH,
-                           MNC_LOCAL_NAME, MNC_INSTALL_PATH, MNC_SO_INSTALL_PATH)
-from core.adb import ADB
-from core.utils.safesocket import SafeSocket
 
 import cv2
 import numpy as np
 from loguru import logger
+
+from core.adb import ADB
+from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME, MNC_CAP_PATH,
+                           MNC_LOCAL_NAME, MNC_INSTALL_PATH, MNC_SO_INSTALL_PATH)
+from core.utils.safesocket import SafeSocket
 
 
 class _Minicap(object):
@@ -132,7 +131,7 @@ class _Minicap(object):
 
 
 class Minicap(_Minicap):
-    def _get_frame(self):
+    def get_frame(self):
         """
         通过socket读取minicap的图片数据,并且通过cv2生成图片,静态页面速度会比adb方法较慢
         :return:
@@ -191,7 +190,7 @@ class Minicap(_Minicap):
                         readFrameBytes += len(chunk) - cursor
                         cursor = len(chunk)
 
-    def _get_frame_adb(self):
+    def get_frame_adb(self):
         """
         通过adb获取minicap的图片数据,并且通过cv2生成图片
         :return:
@@ -207,7 +206,8 @@ class Minicap(_Minicap):
         jpg_data = jpg_data.replace(self.adb.line_breaker, b"\n")
         return jpg_data, (time.time() - stamp) * 1000
 
-    def bytes2img(self, b):
+    @staticmethod
+    def bytes2img(b):
         """bytes转换成cv2可读取格式"""
         img = np.array(bytearray(b))
         img = cv2.imdecode(img, 1)
@@ -215,11 +215,10 @@ class Minicap(_Minicap):
 
     def screenshot(self):
         # 获取当前帧,cv2转换成图片并写入文件
-        frameBody, socket_time = self._get_frame()
+        frameBody, socket_time = self.get_frame()
         stamp = time.time()
         img = self.bytes2img(frameBody)
-        cv2.imwrite(self.MNC_CAP_PATH, img)
-
+        self.adb.tmp_image.set_tmpImage(img)
         write_time = (time.time() - stamp) * 1000
         logger.info(
             "screenshot: socket_time={:.2f}ms, write_time={:.2f}ms,time={:.2f}ms size=({width}x{height}), path={})",

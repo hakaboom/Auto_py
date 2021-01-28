@@ -13,6 +13,7 @@ from typing import Union, Tuple, IO
 from core.constant import DEFAULT_ADB_PATH, SHELL_ENCODING, ADB_CAP_PATH, ADB_CAP_NAME, ADB_CAP_NAME_RAW
 from core.utils.snippet import split_cmd, split_process_status, get_std_encoding
 from core.error import AdbError
+from core.image import image as tmp_image
 
 import cv2
 import numpy as np
@@ -40,6 +41,7 @@ class _ADB(object):
         self._cap_remote_path = ADB_CAP_NAME.format(device_id.replace(':', '_'))
         # raw临时文件存放到工程的路径
         self._cap_raw_remote_path = self._cap_name
+        # 图片缓存函数
 
     @staticmethod
     def builtin_adb_path() -> str:
