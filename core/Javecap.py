@@ -5,6 +5,7 @@ import socket
 import struct
 from core.constant import JAC_LOCAL_NAME, JAC_CAP_PATH
 from core.yosemite import Yosemite
+from core.utils.safesocket import SafeSocket
 from core.utils.nbsp import NonBlockingStreamReader
 from loguru import logger
 
@@ -44,7 +45,7 @@ class Javacap(Yosemite):
     def get_frames(self):
         proc, nbsp = self._setup_stream_server()
         localport = self.adb.get_forward_port(self.JAC_LOCAL_NAME)
-        s = socket.socket()
+        s = SafeSocket()
         s.connect((self.adb.host, localport))
         t = s.recv(24)
         # javacap header
@@ -73,14 +74,14 @@ class Javacap(Yosemite):
         proc.kill()
         self.adb.remove_forward("tcp:%s" % localport)
 
-    def get_frame_from_stream(self):
+    def get_frame_from_stream(self) -> bytes:
         if self.frame_gen is None:
             self.frame_gen = self.get_frames()
         return self.frame_gen.send(None)
 
-    def screenshot(self):
-        screen = self.get_frame_from_stream()
-        nparr = np.frombuffer(screen, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        cv2.imwrite(self.JAC_CAP_PATH, img)
-        logger.info('%s screencap' % self.adb.get_device_id())
+    # def screenshot(self):
+    #     screen = self.get_frame_from_stream()
+    #     nparr = np.frombuffer(screen, np.uint8)
+    #     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    #     cv2.imwrite(self.JAC_CAP_PATH, img)
+    #     logger.info('%s screencap' % self.adb.get_device_id())

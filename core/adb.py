@@ -1,23 +1,23 @@
 #! usr/bin/python
 # -*- coding:utf-8 -*-
 import os
+import platform
+import random
 import re
+import socket
+import subprocess
 import sys
 import time
-import random
-import socket
-import platform
 import warnings
-import subprocess
-from typing import Union, Tuple, IO
-from core.constant import DEFAULT_ADB_PATH, SHELL_ENCODING, ADB_CAP_PATH, ADB_CAP_NAME, ADB_CAP_NAME_RAW
-from core.utils.snippet import split_cmd, split_process_status, get_std_encoding
-from core.error import AdbError
-from core.image import image as tmp_image
+from typing import Union, Tuple
 
-import cv2
 import numpy as np
 from loguru import logger
+
+from core.constant import DEFAULT_ADB_PATH, SHELL_ENCODING, ADB_CAP_PATH, ADB_CAP_NAME, \
+    ADB_CAP_NAME_RAW, ADB_CAP_REMOTE_PATH
+from core.error import AdbError
+from core.utils.snippet import split_cmd, split_process_status, get_std_encoding
 
 
 class _ADB(object):
@@ -40,7 +40,7 @@ class _ADB(object):
         # 截图png存放到工程的路径
         self._cap_remote_path = ADB_CAP_NAME.format(device_id.replace(':', '_'))
         # raw临时文件存放到工程的路径
-        self._cap_raw_remote_path = self._cap_name
+        self._cap_raw_remote_path = ADB_CAP_REMOTE_PATH.format(self._cap_name)
         # 图片缓存函数
 
     @staticmethod
@@ -263,7 +263,8 @@ class _ADB(object):
         cmds = ['shell'] + split_cmd(cmds)
         return self.start_cmd(cmds)
 
-    def raw_shell(self, cmds: Union[list, str], ensure_unicode: bool = True, skip_error: bool = False) -> str:
+    def raw_shell(self, cmds: Union[list, str], ensure_unicode: bool = True, skip_error: bool = False) -> Union[
+        bytes, str]:
         cmds = ['shell'] + split_cmd(cmds)
         stdout = self.cmd(cmds, ensure_unicode=False, skip_error=skip_error)
         if not ensure_unicode:
@@ -335,14 +336,14 @@ class _ADB(object):
             sock.bind(('127.0.0.1', port))
             result = True
             # logger.debug('port:{} can use'.format(port))
-        except:
+        except socket.error:
             logger.debug('port:{} is in use'.format(port))
         sock.close()
         if not result:
             return self.get_available_forward_local()
         return port
 
-    def _local_in_forwards(self, local: str = None, remote: str = None) -> Tuple[bool, int]:
+    def _local_in_forwards(self, local: str = None, remote: str = None) -> Union[Tuple[bool, int], Tuple[bool, None]]:
         """
         检查local是否已经启用
 
@@ -431,6 +432,148 @@ class _ADB(object):
         self.start_shell(['kill', str(pid)])
         logger.info('{} PID:{} NAME:{} is kill', self.device_id, pid, out[0]['NAME'])
 
+    def get_device_id(self) -> str:
+        return self.device_id
+
+    def set_forward(self, remote: str):
+        """
+        通过get_available_forward_local获取可用端口,并与remote绑定
+
+        Args:
+            remote: 要与local绑定的设备端口 localabstract:{remote}"
+
+        :return:
+            localport:要转发的本地端口 tcp:<local>
+            remote:要与local绑定的设备端口 localabstract:{remote}"`
+        """
+        localport = self.get_available_forward_local()
+        self.forward('tcp:%s' % localport, remote)
+        return localport, remote
+
+    def get_forward_port(self, remote: str):
+        """获取开放端口的端口号"""
+        index = self._local_in_forwards(remote='localabstract:%s' % remote)
+        if not index[0]:
+            logger.error('')
+        return int(re.compile(r'tcp:(\d+)').findall(self._forward_local_using[index[1]]['local'])[0])
+
+    def remove_forward(self, local=None):
+        """
+        运行adb forward -- remove
+        :param local:
+            tcp port,如不填写则清楚所以绑定
+        :return:
+            None
+        """
+        if local:
+            cmds = ['forward', '--remove', local]
+        else:
+            cmds = ['forward', '--remove-all']
+        self.cmd(cmds)
+        local_using, index = local and self._local_in_forwards(local) or (False, -1)
+        # 删除在_forward_local_using里的记录
+        if local_using:
+            del self._forward_local_using[index]
+
+    def get_forwards(self) -> list:
+        """
+        command adb forward --list
+
+        :return:
+            返回一个包含占用信息的列表,每个包含键值local和remote
+        """
+        l = []
+        out = self.cmd(['forward', '--list'])
+        for line in out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            cols = line.split()
+            if len(cols) != 3:
+                continue
+            device_id, local, remote = cols
+            l.append({'local': local, 'remote': remote})
+        return l
+
+
+class _Device(_ADB):
+    def get_screen_size(self) -> Tuple[int, int]:
+        wm_size = self.raw_shell(['wm', 'size'])
+        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
+        x, y = int(wm_size[0][0]), int(wm_size[0][1])
+        if x < y:
+            x, y = y, x
+        return x, y
+
+    def get_display_info(self):
+        """adb获取屏幕信息"""
+        # adb获取分辨率
+        wm_size = self.raw_shell(['wm', 'size'])
+        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
+        # adb方式获取DPI
+        wm_dpi = self.raw_shell(['wm', 'density'])
+        wm_dpi = re.findall(r'Physical density: (\d+)\r', wm_dpi)
+        print(wm_size, wm_dpi)
+
+    def screenshot(self, Rect: Tuple[int, int, int, int] = None):
+        """
+        截图
+        :param Rect: 顶点坐标x,y。截取长宽width,height
+        """
+        # 截取临时文件raw
+        local_path = self._cap_local_path
+        raw_remote_path = self._cap_raw_remote_path
+
+        self.raw_shell(['screencap', local_path])
+        self.start_shell(['chmod', '777', local_path])
+        self.pull(local_path, raw_remote_path)
+        # readRaw
+        # read size
+        imgData = np.fromfile(raw_remote_path, dtype=np.uint16)
+        width, height = imgData[2], imgData[0]
+        # read raw
+        imgData = np.fromfile(raw_remote_path, dtype=np.uint8)
+        imgData = imgData[slice(12, len(imgData))]
+        if Rect:
+            if Rect[0] > height or Rect[1] > width or Rect[0] + Rect[2] > height or Rect[1] + Rect[3] > width:
+                raise OverflowError('Rect不能超出屏幕 {}'.format(Rect))
+            index = Rect[0] * 4 + Rect[1] * height * 4  # 从图片左上角开始,y计算公式y*height*4,x计算公式x*4, 4表示4通道
+            end = (Rect[0] + Rect[2]) * 4 + (Rect[1] + Rect[3] - 1) * height * 4
+            imgData = imgData[index: end]
+            imgData = imgData.reshape(Rect[3], Rect[2], 4)
+        else:
+            imgData = imgData.reshape(width, height, 4)
+        imgData = imgData[:, :, ::-1][:, :, 1:4]  # imgData中rgbA转为Abgr,并截取bgr
+        # 删除raw临时文件
+        os.remove(raw_remote_path)
+        return imgData
+
+    def push(self, local, remote):
+        """
+        运行adb push
+        :param local:
+            需要发送的文件路径
+        :param remote:
+            发送到设备上的路径
+        :return:
+            None
+        """
+        if not os.path.isfile(local):
+            raise RuntimeError("file: %s does not exists" % (repr(local)))
+        self.cmd(["push", local, remote], ensure_unicode=False)
+
+    def pull(self, remote, local):
+        """
+        运行adb pull
+        :param remote:
+            设备上的路径
+        :param local:
+            pull到本地的路径
+        :return:
+            None
+        """
+        self.cmd(["pull", remote, local], ensure_unicode=False)
+
     def install_app(self, filepath, replace=False, install_options=None):
         """
         command 'adb install'
@@ -488,8 +631,9 @@ class _ADB(object):
         packages = [p.split(":")[1] for p in packages if p]
         return packages
 
-    def get_device_id(self) -> str:
-        return self.device_id
+    def app_is_running(self, name: str) -> bool:
+        """判断应用是否在运行"""
+        shell = "ps | grep -w {}".format(name)
 
     def start_app(self, package: str, activity: str = None):
         """
@@ -511,154 +655,6 @@ class _ADB(object):
         package = self.raw_shell(shell).rstrip()
         logger.info("'{}' is running in the foreground", package)
         return package
-
-    def app_is_running(self, name: str) -> bool:
-        """判断应用是否在运行"""
-        shell = "ps | grep -w {}".format(name)
-
-
-class _Device(_ADB):
-    def get_screen_size(self) -> Tuple[int, int]:
-        wm_size = self.raw_shell(['wm', 'size'])
-        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
-        x, y = int(wm_size[0][0]), int(wm_size[0][1])
-        if x < y:
-            x, y = y, x
-        return x, y
-
-    def get_display_info(self):
-        """adb获取屏幕信息"""
-        # adb获取分辨率
-        wm_size = self.raw_shell(['wm', 'size'])
-        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
-        # adb方式获取DPI
-        wm_dpi = self.raw_shell(['wm', 'density'])
-        wm_dpi = re.findall(r'Physical density: (\d+)\r', wm_dpi)
-        print(wm_size, wm_dpi)
-
-    def screenshot(self, Rect: Tuple[int, int, int, int] = None):
-        """
-        截图
-        :param Rect: 顶点坐标x,y。截取长宽width,height
-        """
-        # 截取临时文件raw
-        local_path = self._cap_local_path
-        remote_path = self._cap_remote_path
-        raw_remote_path = self._cap_raw_remote_path
-
-        self.raw_shell(['screencap', local_path])
-        self.start_shell(['chmod', '777', local_path])
-        self.pull(local_path, raw_remote_path)
-        # readRaw
-        # read size
-        imgData = np.fromfile(raw_remote_path, dtype=np.uint16)
-        width, height = imgData[2], imgData[0]
-        # read raw
-        imgData = np.fromfile(raw_remote_path, dtype=np.uint8)
-        imgData = imgData[slice(12, len(imgData))]
-        if Rect:
-            if Rect[0] > height or Rect[1] > width or Rect[0] + Rect[2] > height or Rect[1] + Rect[3] > width:
-                raise OverflowError('Rect不能超出屏幕 {}'.format(Rect))
-            index = Rect[0] * 4 + Rect[1] * height * 4  # 从图片左上角开始,y计算公式y*height*4,x计算公式x*4, 4表示4通道
-            end = (Rect[0] + Rect[2]) * 4 + (Rect[1] + Rect[3] - 1) * height * 4
-            imgData = imgData[index: end]
-            imgData = imgData.reshape(Rect[3], Rect[2], 4)
-        else:
-            imgData = imgData.reshape(width, height, 4)
-        imgData = imgData[:, :, ::-1][:, :, 1:4]  # imgData中rgbA转为Abgr,并截取bgr
-        # 写入png
-        cv2.imwrite(remote_path, imgData)
-        logger.info('%s screencap size=(width:%d,height:%d)' % (self.get_device_id(), width, height))
-        # 删除raw临时文件
-        os.remove(raw_remote_path)
-
-        return imgData
-
-    def get_forwards(self) -> list:
-        """
-        command adb forward --list
-
-        :return:
-            返回一个包含占用信息的列表,每个包含键值local和remote
-        """
-        l = []
-        out = self.cmd(['forward', '--list'])
-        for line in out.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            cols = line.split()
-            if len(cols) != 3:
-                continue
-            device_id, local, remote = cols
-            l.append({'local': local, 'remote': remote})
-        return l
-
-    def push(self, local, remote):
-        """
-        运行adb push
-        :param local:
-            需要发送的文件路径
-        :param remote:
-            发送到设备上的路径
-        :return:
-            None
-        """
-        if not os.path.isfile(local):
-            raise RuntimeError("file: %s does not exists" % (repr(local)))
-        self.cmd(["push", local, remote], ensure_unicode=False)
-
-    def pull(self, remote, local):
-        """
-        运行adb pull
-        :param remote:
-            设备上的路径
-        :param local:
-            pull到本地的路径
-        :return:
-            None
-        """
-        self.cmd(["pull", remote, local], ensure_unicode=False)
-
-    def set_forward(self, remote: str):
-        """
-        通过get_available_forward_local获取可用端口,并与remote绑定
-
-        Args:
-            remote: 要与local绑定的设备端口 localabstract:{remote}"
-
-        :return:
-            localport:要转发的本地端口 tcp:<local>
-            remote:要与local绑定的设备端口 localabstract:{remote}"`
-        """
-        localport = self.get_available_forward_local()
-        self.forward('tcp:%s' % localport, remote)
-        return localport, remote
-
-    def get_forward_port(self, remote: str):
-        """获取开放端口的端口号"""
-        index = self._local_in_forwards(remote='localabstract:%s' % remote)
-        if not index[0]:
-            logger.error('')
-        return int(re.compile(r'tcp:(\d+)').findall(self._forward_local_using[index[1]]['local'])[0])
-
-    def remove_forward(self, local=None):
-        """
-        运行adb forward -- remove
-        :param local:
-            tcp port,如不填写则清楚所以绑定
-        :return:
-            None
-        """
-        if local:
-            cmds = ['forward', '--remove', local]
-        else:
-            cmds = ['forward', '--remove-all']
-        self.cmd(cmds)
-        local_using, index = local and self._local_in_forwards(local) or (False, -1)
-        # 删除在_forward_local_using里的记录
-        if local_using:
-            del self._forward_local_using[index]
 
 
 class ADB(_Device):

@@ -4,15 +4,13 @@ import json
 import re
 import time
 
-import cv2
-import numpy as np
 from loguru import logger
 
 from core.adb import ADB
 from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME, MNC_CAP_PATH,
                            MNC_LOCAL_NAME, MNC_INSTALL_PATH, MNC_SO_INSTALL_PATH)
 from core.utils.safesocket import SafeSocket
-
+from typing import Tuple
 
 class _Minicap(object):
     """minicap模块"""
@@ -131,7 +129,7 @@ class _Minicap(object):
 
 
 class Minicap(_Minicap):
-    def get_frame(self):
+    def get_frame(self) -> Tuple[bytes, int]:
         """
         通过socket读取minicap的图片数据,并且通过cv2生成图片,静态页面速度会比adb方法较慢
         :return:
@@ -206,21 +204,22 @@ class Minicap(_Minicap):
         jpg_data = jpg_data.replace(self.adb.line_breaker, b"\n")
         return jpg_data, (time.time() - stamp) * 1000
 
-    @staticmethod
-    def bytes2img(b):
-        """bytes转换成cv2可读取格式"""
-        img = np.array(bytearray(b))
-        img = cv2.imdecode(img, 1)
-        return img
-
-    def screenshot(self):
-        # 获取当前帧,cv2转换成图片并写入文件
-        frameBody, socket_time = self.get_frame()
-        stamp = time.time()
-        img = self.bytes2img(frameBody)
-        self.adb.tmp_image.set_tmpImage(img)
-        write_time = (time.time() - stamp) * 1000
-        logger.info(
-            "screenshot: socket_time={:.2f}ms, write_time={:.2f}ms,time={:.2f}ms size=({width}x{height}), path={})",
-            socket_time, write_time, socket_time + write_time, self.MNC_CAP_PATH,
-            width=self.display_info['width'], height=self.display_info['height'])
+    # @staticmethod
+    # def bytes2img(b):
+    #     """bytes转换成cv2可读取格式"""
+    #     img = np.array(bytearray(b))
+    #     img = cv2.imdecode(img, 1)
+    #     return img
+    #
+    # def screenshot(self):
+    #     # 获取当前帧,cv2转换成图片并写入文件
+    #     frameBody, socket_time = self._get_frame()
+    #     stamp = time.time()
+    #     img = self.bytes2img(frameBody)
+    #     cv2.imwrite(self.MNC_CAP_PATH, img)
+    #
+    #     write_time = (time.time() - stamp) * 1000
+    #     logger.info(
+    #         "screenshot: socket_time={:.2f}ms, write_time={:.2f}ms,time={:.2f}ms size=({width}x{height}), path={})",
+    #         socket_time, write_time, socket_time + write_time, self.MNC_CAP_PATH,
+    #         width=self.display_info['width'], height=self.display_info['height'])
