@@ -13,16 +13,16 @@ DEFAULT_ADB_PATH = {  # adb.exe路径
 }
 SHELL_ENCODING = 'utf-8'  # adb shell的编码
 ADB_CAP_NAME_RAW = '{}.raw'  # 使用ADB截图时生成raw的文件名
-ADB_CAP_NAME = './tmp/{}.png'  # 使用ADB截图时png保存到电脑的路径
-ADB_CAP_REMOTE_PATH = './tmp/{}'  # 使用ADB截图时候raw保存到电脑上的路径
-ADB_CAP_PATH = '/data/local/tmp/{}'  # 使用ADB截图时在手机上的路径
+ADB_CAP_REMOTE_PATH = './tmp/{}.png'  # 使用ADB截图时png保存到电脑的路径
+ADB_CAP_REMOTE_RAW_PATH = './tmp/{}'  # 使用ADB截图时候raw保存到电脑上的路径
+ADB_CAP_LOCAL_PATH = '/data/local/tmp/{}'  # 使用ADB截图时在手机上的路径
 
 # minicap
 TEMP_HOME = '/data/local/tmp'  # 临时文件路径
 MNC_HOME = '/data/local/tmp/minicap'  # minicap文件在手机上的路径
 MNC_SO_HOME = '/data/local/tmp/minicap.so'  # minicap.so文件在手机上的路径
 MNC_CMD = 'LD_LIBRARY_PATH={} {}'.format(TEMP_HOME, MNC_HOME)  # 运行minicap的cmd命令
-MNC_CAP_PATH = ADB_CAP_NAME  # minicap截图保存到电脑的路径,与ADB的相同
+MNC_CAP_REMOTE_PATH = ADB_CAP_REMOTE_PATH  # minicap截图保存到电脑的路径,与ADB的相同
 MNC_LOCAL_NAME = 'minicap_{}'  # minicap开放的端口名字
 MNC_INSTALL_PATH = "./static/stf_libs/{}/minicap"  # abi_version  minicap安装文件路径
 MNC_SO_INSTALL_PATH = "./static/stf_libs/minicap-shared/aosp/libs/android-{}/{}/minicap.so"  # sdk,abi version

@@ -14,8 +14,8 @@ from typing import Union, Tuple
 import numpy as np
 from loguru import logger
 
-from core.constant import DEFAULT_ADB_PATH, SHELL_ENCODING, ADB_CAP_PATH, ADB_CAP_NAME, \
-    ADB_CAP_NAME_RAW, ADB_CAP_REMOTE_PATH
+from core.constant import DEFAULT_ADB_PATH, SHELL_ENCODING, ADB_CAP_NAME_RAW, ADB_CAP_REMOTE_RAW_PATH, \
+    ADB_CAP_LOCAL_PATH, ADB_CAP_REMOTE_PATH
 from core.error import AdbError
 from core.utils.snippet import split_cmd, split_process_status, get_std_encoding
 
@@ -36,11 +36,11 @@ class _ADB(object):
         # 截图文件名字
         self._cap_name = ADB_CAP_NAME_RAW.format(device_id.replace(':', '_'))
         # 截图在手机上的路径
-        self._cap_local_path = ADB_CAP_PATH.format(self._cap_name)
+        self._cap_local_path = ADB_CAP_LOCAL_PATH.format(self._cap_name)
         # 截图png存放到工程的路径
-        self._cap_remote_path = ADB_CAP_NAME.format(device_id.replace(':', '_'))
+        self._cap_remote_path = ADB_CAP_REMOTE_PATH.format(device_id.replace(':', '_'))
         # raw临时文件存放到工程的路径
-        self._cap_raw_remote_path = ADB_CAP_REMOTE_PATH.format(self._cap_name)
+        self._cap_raw_remote_path = ADB_CAP_REMOTE_RAW_PATH.format(self._cap_name)
         # 图片缓存函数
 
     @staticmethod
@@ -176,7 +176,7 @@ class _ADB(object):
 
         if proc.returncode > 0:
             # adb error
-            logger.error("adb connection {stdout} {stderr}", stdout=stdout, stderr=stderr)
+            # logger.error("adb connection {stdout} {stderr}", stdout=stdout, stderr=stderr)
             if not skip_error:
                 raise AdbError(stdout, stderr, cmds)
         return stdout
@@ -403,7 +403,10 @@ class _ADB(object):
         else:
             shell = 'ps'
         out = self.raw_shell(shell, skip_error=True)
-        return split_process_status(out)
+        out = split_process_status(out)
+        if not out:
+            logger.error('{}: {} is not started', pid and 'pid' or 'name', pid and pid or name)
+        return out
 
     def kill_process(self, pid: int = None, name: str = None):
         """
@@ -418,7 +421,6 @@ class _ADB(object):
             if out:
                 pid = out[0]['PID']
             else:
-                logger.error('pid：{} is not started', str(pid))
                 return False
         elif name:
             out = self.get_process_status(name=name)
@@ -427,7 +429,6 @@ class _ADB(object):
                     logger.info('匹配到多个进程')
                 pid = out[0]['PID']
             else:
-                logger.info('NAME: {} is not started', name)
                 return False
         self.start_shell(['kill', str(pid)])
         logger.info('{} PID:{} NAME:{} is kill', self.device_id, pid, out[0]['NAME'])

@@ -8,7 +8,8 @@ from core.minitouch import Minitouch
 from core.constant import TOUCH_METHOD, CAP_METHOD
 from core.Javecap import Javacap
 from core.utils.base import initLogger
-from core.image import image as tmp_image
+from core.cv.base_image import image as tmp_image
+from core.constant import ADB_CAP_LOCAL_PATH
 from loguru import logger
 from typing import Union, Tuple
 
@@ -40,7 +41,7 @@ class Android(object):
             self.touch_method = TOUCH_METHOD.ADBTOUCH
         else:
             raise ValueError("please choice touch_method ('minitouch','adbtouch')")
-        self.tmp_image = tmp_image(self.adb, capFunction=self.screenshot)
+        self.tmp_image = tmp_image(self.adb)
 
     def screenshot(self):
         stamp = time.time()
@@ -79,6 +80,10 @@ class Android(object):
             return self.minitouch.click(x, y, index=index, duration=duration)
         elif self.touch_method == TOUCH_METHOD.ADBTOUCH:
             return self.adbtouch.click(x, y, index=index, duration=duration)
+
+    def get_cap_path(self):
+        """获取当前截图路径"""
+        return self.tmp_image.path
 
 
 class _system(Android):

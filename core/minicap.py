@@ -7,10 +7,11 @@ import time
 from loguru import logger
 
 from core.adb import ADB
-from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME, MNC_CAP_PATH,
+from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME, MNC_CAP_REMOTE_PATH,
                            MNC_LOCAL_NAME, MNC_INSTALL_PATH, MNC_SO_INSTALL_PATH)
 from core.utils.safesocket import SafeSocket
 from typing import Tuple
+
 
 class _Minicap(object):
     """minicap模块"""
@@ -29,7 +30,7 @@ class _Minicap(object):
         self.MNC_PORT = 0
         self.display_info = None
         # 因为字符串中有:的话没法保存文件 所以替换字符串中的:
-        self.MNC_CAP_PATH = MNC_CAP_PATH.format(self.adb.get_device_id().replace(':', '_'))
+        # self.MNC_CAP_REMOTE_PATH = MNC_CAP_REMOTE_PATH.format(self.adb.get_device_id().replace(':', '_'))
         self._abi_version = self.adb.abi_version()
         self._sdk_version = self.adb.sdk_version()
         # 开启服务
@@ -45,6 +46,7 @@ class _Minicap(object):
         self.MNC_PORT = self.adb.get_forward_port(self.MNC_LOCAL_NAME)
         if not self.MNC_PORT:
             raise logger.error('minicap port not set: local_name{}', self.MNC_LOCAL_NAME)
+        logger.info("'{}' start in port:{}", self.MNC_LOCAL_NAME, self.MNC_PORT)
 
     def push_target_mnc(self):
         """ push specific minicap """
@@ -216,7 +218,7 @@ class Minicap(_Minicap):
     #     frameBody, socket_time = self._get_frame()
     #     stamp = time.time()
     #     img = self.bytes2img(frameBody)
-    #     cv2.imwrite(self.MNC_CAP_PATH, img)
+    #     cv2.imwrite(self.MNC_CAP_REMOTE_PATH, img)
     #
     #     write_time = (time.time() - stamp) * 1000
     #     logger.info(
