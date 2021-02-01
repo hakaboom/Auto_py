@@ -7,8 +7,6 @@ from typing import Tuple, Union
 import numpy as np
 from loguru import logger
 
-# 后续写一个cv2类,用来传递参数好了
-
 
 class _image(object):
     def __init__(self, adb):
