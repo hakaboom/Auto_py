@@ -114,12 +114,12 @@ class Size(object):
 
     def __mul__(self, other):
         if type(other) == int:
-            return Size(self.width * other, self.height * other )
+            return Size(self.width * other, self.height * other)
         raise logger.error('目标对象不是int类,请检查')
 
     def __truediv__(self, other):
         if type(other) == int:
-            return Size(self.width / other, self.height / other )
+            return Size(self.width / other, self.height / other)
         raise logger.error('目标对象不是int类,请检查')
 
     def __eq__(self, other):
@@ -235,12 +235,24 @@ class Anchor(object):
         point.x, point.y = self.transform(point)
         return point
 
-    def transform(self, point: Point):
-        # 计算锚点坐标
-        anchor_x, anchor_y = self._count_anchor_point(point)
-        # 计算从属点坐标
-        x, y = self._count_appurtenant_point(point, anchor_x, anchor_y)
-        return x, y
+    def size(self, width: int, height: int):
+        size = Size(width=width, height=height)
+        size.width, size.height = self.transform(size)
+        return size
+
+    def transform(self, args: Union[Point, Size]):
+        if isinstance(args, Point):
+            # 计算锚点坐标
+            anchor_x, anchor_y = self._count_anchor_point(args)
+            # 计算从属点坐标
+            x, y = self._count_appurtenant_point(args, anchor_x, anchor_y)
+            return x, y
+        elif isinstance(args, Size):
+            width = args.width * self.mainPoint_scale['x']
+            height = args.height * self.mainPoint_scale['y']
+            return width, height
+        else:
+            raise ValueError('转换未知的类型: {}'.format(args))
 
     def _count_appurtenant_point(self, point, anchor_x, anchor_y):
         """计算锚点从属点坐标"""
