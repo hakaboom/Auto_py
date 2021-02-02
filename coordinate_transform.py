@@ -167,6 +167,9 @@ class Rect(object):
         return False
 
 
+Rect.ZERO = Rect(0, 0, 0, 0)
+
+
 class Anchor_transform(object):
     @staticmethod
     def Middle(x, y, dev, cur, mainPoint_scale):
