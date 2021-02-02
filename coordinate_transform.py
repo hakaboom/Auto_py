@@ -135,8 +135,36 @@ Size.INVALID = Size(-1, -1)
 
 
 class Rect(object):
-    def __init__(self, **kwargs):
-        pass
+    def __init__(self, x, y, width, height):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+
+    def __str__(self):
+        return '<Rect [Point({}, {}), Size[{}, {}]]'.format(
+            self.x, self.y, self.width, self.height)
+
+    @property
+    def size(self):
+        return Size(self.width, self.height)
+
+    def tl(self):
+        """返回当前Rect的左上角Point坐标"""
+        return Point(self.x, self.y)
+
+    def br(self):
+        """返回当前Rect的右下角Point坐标"""
+        return Point(self.x+self.width, self.y+self.height)
+
+    def contains(self, point: Point):
+        """判断Point是否在当前Rect范围中"""
+        if type(point) != Point:
+            raise logger.error('目标对象不是Point类,请检查')
+        tl, br = self.tl(), self.br()
+        if tl.x <= point.x <= br.x and tl.y <= point.y <= br.y:
+            return True
+        return False
 
 
 class Anchor_transform(object):
