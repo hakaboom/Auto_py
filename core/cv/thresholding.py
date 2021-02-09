@@ -29,14 +29,13 @@ def otsu(gray_img):
         w0 = len(n0) / (h * w)
         w1 = len(n1) / (h * w)
         u0 = np.mean(n0) if len(n0) > 0 else 0.
-        # u1 = np.mean(n1) if len(n0) > 0 else 0.
         u1 = np.mean(n1) if len(n1) > 0 else 0.
 
         g = w0 * w1 * (u0 - u1) ** 2
         if g > max_g:
             max_g = g
             threshold_t = t
-
+    # print('类间方差最大阈值：', threshold_t)
     gray_img[gray_img < threshold_t] = 0
     gray_img[gray_img >= threshold_t] = 255
     return gray_img

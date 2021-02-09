@@ -20,7 +20,7 @@ def rgb_confidence(img_crop, im_search):
     return min(bgr_confidence)
 
 
-def find_template(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEFF_NORMED):
+def find_template(im_source, im_search, threshold: int = 0.85, mode=cv2.TM_CCOEFF_NORMED):
     """
     模板匹配
     :param im_source: 待匹配图像
@@ -42,7 +42,7 @@ def find_template(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEFF
         return None
     # 求取位置
     x, y = max_loc
-    rect = Rect(x, y, h, w)
+    rect = Rect(x, y, w, h)
     return rect
 
 
@@ -61,11 +61,24 @@ def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEF
         if confidence < threshold or len(result) > max_count:
             break
         x, y = max_loc
-        rect = Rect(x, y, h, w)
+        rect = Rect(x, y, w, h)
         result.append(rect)
         # 屏蔽最优结
-        print((int(max_loc[0] - 5), int(max_loc[1] - 5)))
-        print((int(max_loc[0] + w), int(max_loc[1] + h/2)))
         cv2.rectangle(res, (int(max_loc[0] - 1), int(max_loc[1] - 1)),
                       (int(max_loc[0] + 1), int(max_loc[1] + 1)), (0, 0, 0), -1)
     return result if result else None
+
+
+if __name__ == '__main__':
+    def cv_imread(file_path):
+        return cv2.imdecode(np.fromfile(file_path, dtype=np.uint8), -1)
+
+    im_source = cv_imread('./tmp/主界面1.png')
+    im_search = cv_imread('./tmp/编队.png')
+    h, w, _ = im_search.shape
+    h, w = int(h * (540 / 1080)), int(w * (540 / 1080))
+    im_search = cv2.resize(im_search, (w, h), interpolation=cv2.INTER_LANCZOS4)
+
+    request = find_template(im_search=im_search, im_source=im_source)
+    print(request)
+    cv2.waitKey(0)

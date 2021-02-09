@@ -3,14 +3,16 @@
 import cv2
 import time
 from core.constant import ADB_CAP_REMOTE_PATH
+from core.cv.thresholding import otsu, bgr2gray
 from typing import Tuple, Union
 import numpy as np
 from loguru import logger
+"""cv2无法读取中文路径"""
 
 
 class _image(object):
-    def __init__(self, adb):
-        self._tmp_path = ADB_CAP_REMOTE_PATH.format(adb.get_device_id().replace(':', '_'))
+    def __init__(self, adb=None):
+        self._tmp_path = adb and ADB_CAP_REMOTE_PATH.format(adb.get_device_id().replace(':', '_')) or './tmp/'
         self._tmp_image_data = None  # 图像文件缓存
         # self._capFunction = capFunction
 
@@ -75,8 +77,8 @@ class _image(object):
 
 class cv(object):
     """操作image类,返回新的图片对象"""
-    def __init__(self, image: np.ndarray):
-        self.image = image.copy()
+    def __init__(self, img: np.ndarray):
+        self.image = img.copy()
 
     def imshow(self, title: str = 'show', flag: bool = False):
         """以GUI显示图片"""
@@ -125,7 +127,7 @@ class image(_image):
         M[0, 2] += offset_x
         M[1, 2] += offset_y
         dst = cv2.warpAffine(img, M, (new_width, new_height))
-        return cv(image=dst)
+        return cv(img=dst)
 
     def crop_image(self, rect):
         """区域范围截图"""
@@ -144,4 +146,10 @@ class image(_image):
 
             # 返回剪切的有效图像+左上角的偏移坐标：
             img_crop = img[y_min:y_max, x_min:x_max]
-            return cv(image=img_crop)
+            return cv(img=img_crop)
+
+    def binarization(self):
+        img = self.read_tmp()
+        img = bgr2gray(img)
+        gray_img = otsu(img)
+        return cv(img=gray_img)
