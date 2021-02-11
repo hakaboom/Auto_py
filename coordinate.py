@@ -129,6 +129,33 @@ class Size(object):
             logger.error('目标对象不是Size类,请检查')
             return False
 
+    def __lt__(self, other):
+        if type(other) == Size:
+            return self.width*self.height < other.width*other.height
+        else:
+            logger.error('目标对象不是Size类,请检查')
+            return False
+
+    def __gt__(self, other):
+        if type(other) == Size:
+            return self.width*self.height > other.width*other.height
+        else:
+            logger.error('目标对象不是Size类,请检查')
+            return False
+
+    def __le__(self, other):
+        if type(other) == Size:
+            return self.width*self.height <= other.width*other.height
+        else:
+            logger.error('目标对象不是Size类,请检查')
+            return False
+
+    def __ge__(self, other):
+        if type(other) == Size:
+            return self.width*self.height >= other.width*other.height
+        else:
+            logger.error('目标对象不是Size类,请检查')
+            return False
 
 Size.ZERO = Size(0, 0)
 Size.INVALID = Size(-1, -1)
@@ -149,19 +176,25 @@ class Rect(object):
     def size(self):
         return Size(self.width, self.height)
 
+    @property
     def tl(self):
         """返回当前Rect的左上角Point坐标"""
         return Point(self.x, self.y)
 
+    @property
     def br(self):
         """返回当前Rect的右下角Point坐标"""
         return Point(self.x+self.width, self.y+self.height)
+
+    @property
+    def middle(self):
+        return Point(self.x+self.width/2, self.y+self.height/2)
 
     def contains(self, point: Point):
         """判断Point是否在当前Rect范围中"""
         if type(point) != Point:
             raise logger.error('目标对象不是Point类,请检查')
-        tl, br = self.tl(), self.br()
+        tl, br = self.tl, self.br
         if tl.x <= point.x <= br.x and tl.y <= point.y <= br.y:
             return True
         return False

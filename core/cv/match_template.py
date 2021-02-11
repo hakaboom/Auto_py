@@ -4,19 +4,18 @@
 import cv2
 import time
 import numpy as np
-from coordinate_transform import Rect
+from coordinate import Rect
 
 
-def rgb_confidence(img_crop, im_search):
-    src_bgr = cv2.split(img_crop)
-    sch_bgr = cv2.split(im_search)
+def cal_rgb_confidence(img_src_rgb, img_sch_rgb):
+    src_bgr = cv2.split(img_src_rgb)
+    sch_bgr = cv2.split(img_sch_rgb)
     # 计算BGR三通道的confidence，存入bgr_confidence:
     bgr_confidence = [0, 0, 0]
     for i in range(3):
         res_temp = cv2.matchTemplate(src_bgr[i], sch_bgr[i], cv2.TM_CCOEFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res_temp)
         bgr_confidence[i] = max_val
-
     return min(bgr_confidence)
 
 
@@ -36,14 +35,15 @@ def find_template(im_source, im_search, threshold: int = 0.85, mode=cv2.TM_CCOEF
     h, w = im_search.shape[:2]
     # 求可信度
     img_crop = im_source[max_loc[1]:max_loc[1] + h, max_loc[0]: max_loc[0] + w]
-    confidence = rgb_confidence(img_crop, im_search)
+    confidence = cal_rgb_confidence(img_crop, im_search)
     # 如果可信度小于threshold,则返回None
     if confidence < threshold:
         return None
     # 求取位置
     x, y = max_loc
-    rect = Rect(x, y, w, h)
-    return rect
+    rect = Rect(x=x, y=y, width=w, height=h)
+
+    return rect, confidence
 
 
 def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEFF_NORMED, max_count=10):
@@ -61,7 +61,7 @@ def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEF
         if confidence < threshold or len(result) > max_count:
             break
         x, y = max_loc
-        rect = Rect(x, y, w, h)
+        rect = Rect(x=x, y=y, width=w, height=h)
         result.append(rect)
         # 屏蔽最优结
         cv2.rectangle(res, (int(max_loc[0] - 1), int(max_loc[1] - 1)),
