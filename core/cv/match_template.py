@@ -42,8 +42,8 @@ def find_template(im_source, im_search, threshold: int = 0.85, mode=cv2.TM_CCOEF
     # 求取位置
     x, y = max_loc
     rect = Rect(x=x, y=y, width=w, height=h)
-
-    return rect, confidence
+    print('{Rect}, confidence={confidence}'.format(confidence=confidence, Rect=rect))
+    return rect
 
 
 def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEFF_NORMED, max_count=10):
@@ -56,7 +56,7 @@ def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEF
     while True:
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
         img_crop = im_source[max_loc[1]:max_loc[1] + h, max_loc[0]: max_loc[0] + w]
-        confidence = rgb_confidence(img_crop, im_search)
+        confidence = cal_rgb_confidence(img_crop, im_search)
 
         if confidence < threshold or len(result) > max_count:
             break

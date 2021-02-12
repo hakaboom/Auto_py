@@ -17,19 +17,11 @@ from core.cv.sift import SIFT
 def cv_imread(file_path):
     return cv2.imdecode(np.fromfile(file_path, dtype=np.uint8), -1)
 
+im_source = cv_imread('./tmp/iphone.png')
+im_search = cv_imread('./tmp/iphone.jpg')
+# im_source = cv2.resize(im_source, (int(im_source.shape[1]/1.3), int(im_source.shape[0]/1.3)))
 
-im_source = cv_imread('./tmp/主界面1.png')
-im_search = cv_imread('./tmp/编队.png')
+
 sift = SIFT()
-sift.find_sift(im_search=im_search, im_source=im_source)
-
-
-# goodMatch = np.expand_dims(goodMatch, 1)
-# img_out = cv2.drawMatchesKnn(psd_img_1, psd_kp1, psd_img_2, psd_kp2, goodMatch[:15], None, flags=2)
-
-
-
-# from airtest.aircv.sift import find_sift
-# im_source = cv_imread('./tmp/主界面1.png')
-# im_search = cv_imread('./tmp/编队.png')
-# find_sift(im_source=im_source, im_search=im_search)
+start = time.time()
+r = sift.find_sift(im_search=im_search, im_source=im_source)
