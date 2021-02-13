@@ -190,13 +190,16 @@ class Rect(object):
     def middle(self):
         return Point(self.x+self.width/2, self.y+self.height/2)
 
-    def contains(self, point: Point):
-        """判断Point是否在当前Rect范围中"""
-        if type(point) != Point:
-            raise logger.error('目标对象不是Point类,请检查')
-        tl, br = self.tl, self.br
-        if tl.x <= point.x <= br.x and tl.y <= point.y <= br.y:
-            return True
+    def contains(self, v):
+        """判断Point,或者Rect是否在当前Rect范围中"""
+        if isinstance(v, Point):
+            tl, br = self.tl, self.br
+            if tl.x <= v.x <= br.x and tl.y <= v.y <= br.y:
+                return True
+        elif isinstance(v, Rect):
+            """判断左上,右下顶点坐标即可"""
+            if self.contains(v.tl) and self.contains(v.br):
+                return True
         return False
 
 

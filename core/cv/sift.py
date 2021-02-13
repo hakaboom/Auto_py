@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-1。 建立高斯差分金字塔
-2。 确认关键点
+需要解决的问题:
+    SIFT 获取图像特征点和描述符时间太长
 """
 import cv2
 import numpy as np
@@ -12,11 +12,11 @@ from coordinate import Rect, Size
 
 
 class SIFT(object):
-
     FLANN_INDEX_KDTREE = 0
     FILTER_RATIO = 0.59
     ONE_POINT_CONFI = 0.5
-    NARROW_RATIO = 1.9
+    # 图像缩放倍率 用于缩小im_source大小,加快SIFT特征点获取速度
+    NARROW_RATIO = 1
 
     def __init__(self):
         # 创建SIFT实例
@@ -31,10 +31,43 @@ class SIFT(object):
         """基于FlannBasedMatcher的SIFT实现"""
         im_search, im_source = im_search.copy(), im_source.copy()
         # 第一步: 获取特征点集并匹配出特征点对
-        h, w = im_search.shape[:2]
-        h_s, w_s = im_source.shape[:2]
         kp_sch, kp_src, good = self.get_key_points(im_search=im_search, im_source=im_source)
         # 第二步：根据匹配点对(good),提取出来识别区域:
+        rect = self.extract_good_points(im_source, im_search, kp_sch, kp_src, good)
+        if not rect:
+            return None
+        # 第三步：根据识别区域，通过模板匹配,求出结果可信度，并将结果进行返回:
+        x_min, y_min = rect.tl.x, rect.tl.y
+        x_max, y_max = rect.br.x, rect.br.y
+        target_img = im_source[y_min:y_max, x_min:x_max]
+        # 计算相似度
+        confidence = self._cal_sift_confidence(resize_img=target_img, im_search=im_search)
+        print('{Rect}, confidence={confidence}'.format(confidence=confidence, Rect=rect))
+        return rect if confidence > threshold else None
+
+    def find_sift_narrow(self, im_source: ndarray, im_search: ndarray, threshold: int = 0.8):
+        """基于FlannBasedMatcher的SIFT实现, 通过缩小图像大小增快速度"""
+        im_search, im_source = im_search.copy(), im_source.copy()
+        # 第一步: 缩放图片大小
+        narrow_src = cv2.resize(im_source, (int(im_source.shape[1] / self.NARROW_RATIO),
+                                            int(im_source.shape[0] / self.NARROW_RATIO)))
+        # 第二步: 获取特征点集并匹配出特征点对
+        kp_sch, kp_src, good = self.get_key_points(im_search=im_search, im_source=narrow_src)
+        # 第三步：根据匹配点对(good),提取出来识别区域:
+        rect = self.extract_good_points(narrow_src, im_search, kp_sch, kp_src, good)
+        if not rect:
+            return None
+        # 第三步：根据识别区域，通过模板匹配,求出结果可信度，并将结果进行返回:
+        # 将返回的范围按照缩放倍率重新放大
+        rect.x, rect.y = int(rect.x * self.NARROW_RATIO), int(rect.y * self.NARROW_RATIO)
+        rect.width, rect.height = int(rect.width * self.NARROW_RATIO), int(rect.height * self.NARROW_RATIO)
+        target_img = im_source[rect.tl.y:rect.br.y, rect.tl.x:rect.br.x]
+        # 计算相似度
+        confidence = self._cal_sift_confidence(resize_img=target_img, im_search=im_search)
+        print('{Rect}, confidence={confidence}'.format(confidence=confidence, Rect=rect))
+        return rect if confidence > threshold else None
+
+    def extract_good_points(self, im_source, im_search, kp_sch, kp_src, good):
         if len(good) == 0:
             # 没有匹配点,直接返回None
             return None
@@ -43,23 +76,7 @@ class SIFT(object):
         elif len(good) >= 4:
             # 匹配点大于5,使用单矩阵映射求出目标区域
             rect = self._many_good_pts(im_source, im_search, kp_sch, kp_src, good)
-        # 第三步：根据识别区域，通过模板匹配,求出结果可信度，并将结果进行返回:
-        x_min, y_min = rect.tl.x, rect.tl.y
-        x_max, y_max = rect.br.x, rect.br.y
-        target_img = im_source[y_min:y_max, x_min:x_max]
-        cv2.imshow('test', im_source)
-        # cv2.waitKey(0)
-        sch_size = Size(width=w, height=h)
-        if sch_size < rect.size:
-            # 如果模板比目标区域小则：缩小截取的图像, 缩小成模板的大小
-            im_search = cv2.resize(im_search, (rect.width, rect.height))
-        elif sch_size > rect.size:
-            # 如果模板比目标区域大则：缩小模板的图像, 缩小成目标区域大小
-            target_img = cv2.resize(target_img, (w, h))
-
-        confidence = self._cal_sift_confidence(resize_img=target_img, im_search=im_search)
-        print('{Rect}, confidence={confidence}'.format(confidence=confidence, Rect=rect))
-        return rect if confidence >= threshold else None
+        return rect
 
     def get_keypoints_and_descriptors(self, image):
         """获取图像特征点和描述符."""
@@ -97,7 +114,8 @@ class SIFT(object):
             (kp_src[good[1].trainIdx].pt[1] + kp_src[good[2].trainIdx].pt[1]) / 2)
         return self._two_good_points(pts_sch1, pts_sch2, pts_src1, pts_src2, im_search, im_source)
 
-    def _find_homography(self, sch_pts, src_pts):
+    @staticmethod
+    def _find_homography(sch_pts, src_pts):
         """多组特征点对时，求取单向性矩阵."""
         try:
             M, mask = cv2.findHomography(sch_pts, src_pts, cv2.RANSAC, 5.0)
@@ -142,7 +160,7 @@ class SIFT(object):
         y_min, y_max = int(max(y_min, 0)), int(max(y_max, 0))
         # 当y_min大于h_s时，取值h_s-1。  y_max大于h_s-1时，取h_s-1。
         y_min, y_max = int(min(y_min, h_s - 1)), int(min(y_max, h_s - 1))
-        return Rect(x=x_min, y=y_min, width=(x_max-x_min), height=(y_max-y_min))
+        return Rect(x=x_min, y=y_min, width=(x_max - x_min), height=(y_max - y_min))
 
     def _cal_sift_confidence(self, im_search, resize_img):
         confidence = cal_rgb_confidence(img_src_rgb=im_search, img_sch_rgb=resize_img)
@@ -183,4 +201,4 @@ class SIFT(object):
         pts = np.float32([[x_min, y_min], [x_min, y_max], [x_max, y_max], [x_max, y_min]]).reshape(-1, 1, 2)
         for npt in pts.astype(int).tolist():
             pypts.append(tuple(npt[0]))
-        return Rect(x=x_min, y=y_min, width=(x_max-x_min), height=(y_max-y_min))
+        return Rect(x=x_min, y=y_min, width=(x_max - x_min), height=(y_max - y_min))
