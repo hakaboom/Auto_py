@@ -12,3 +12,4 @@ from coordinate import Anchor, Point, Size, Rect
 a = Android(device_id='4bfeb217', cap_method='minicap', touch_method='adbtouch')
 print(a.screenshot().imshow())
 cv2.waitKey(0)
+a.screenshot().save_2_path()

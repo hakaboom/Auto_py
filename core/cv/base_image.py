@@ -22,6 +22,12 @@ class _image(object):
     def imread(self) -> np.ndarray:
         return self.image_data
 
+    def save_2_path(self, path=None):
+        if self.imread() is None:
+            raise ValueError('没有缓存图片')
+        path = self.path or path
+        cv2.imwrite(path, self.imread())
+
     def imwrite(self, img, flags: int = cv2.IMREAD_COLOR):
         if type(img) == str:
             self.image_data = read_image('{}{}'.format(self.tmp_path, img), flags)
