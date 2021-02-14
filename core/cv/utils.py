@@ -31,7 +31,7 @@ def read_image(filename: str, flags: int = cv2.IMREAD_COLOR):
 def bytes_2_img(byte) -> np.ndarray:
     """bytes转换成cv2可读取格式"""
     img = cv2.imdecode(np.array(bytearray(byte)), 1)
-    if check_image_valid(img) is False:
+    if img is None:
         raise ValueError('decode bytes to image error \n\'{}\''.format(byte))
     return img
 

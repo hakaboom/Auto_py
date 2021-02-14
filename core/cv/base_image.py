@@ -5,7 +5,7 @@ import time
 from core.constant import ADB_CAP_REMOTE_PATH
 from coordinate import Rect
 from core.cv.thresholding import otsu
-from core.cv.utils import read_image, bgr_2_gray
+from core.cv.utils import read_image, bgr_2_gray, bytes_2_img
 from core.utils.base import auto_increment
 from typing import Tuple, Union
 import numpy as np
@@ -13,11 +13,11 @@ from loguru import logger
 
 
 class _image(object):
-    def __init__(self, img, flags=cv2.IMREAD_COLOR, adb=None):
+    def __init__(self, img=None, flags=cv2.IMREAD_COLOR, adb=None):
         self.tmp_path = adb and ADB_CAP_REMOTE_PATH.format(adb.get_device_id().replace(':', '_')) or './tmp/'
         self.image_data = None
         # self._capFunction = capFunction
-        self.imwrite(img, flags)
+        # self.imwrite(img, flags)
 
     def imread(self) -> np.ndarray:
         return self.image_data
@@ -29,6 +29,8 @@ class _image(object):
             self.image_data = img
         elif isinstance(img, image):
             self.image_data = img.imread().copy()
+        elif isinstance(img, bytes):
+            self.image_data = bytes_2_img(img)
         else:
             raise ValueError('unknown image, type:{}, image={} '.format(type(img), img))
 
