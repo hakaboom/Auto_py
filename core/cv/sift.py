@@ -3,6 +3,7 @@
 需要解决的问题:
     SIFT 获取图像特征点和描述符时间太长
 """
+import time
 import cv2
 import numpy as np
 from numpy import ndarray
@@ -15,8 +16,8 @@ class SIFT(object):
     FLANN_INDEX_KDTREE = 0
     FILTER_RATIO = 0.59
     ONE_POINT_CONFI = 0.5
-    # 图像缩放倍率 用于缩小im_source大小,加快SIFT特征点获取速度
-    NARROW_RATIO = 1
+    # 图像缩放倍率 用于缩小im_source大小,加快SIFT特征点获取速度,但是会损失精度
+    NARROW_RATIO = 2
 
     def __init__(self):
         # 创建SIFT实例
@@ -29,6 +30,7 @@ class SIFT(object):
 
     def find_sift(self, im_source: ndarray, im_search: ndarray, threshold: int = 0.8):
         """基于FlannBasedMatcher的SIFT实现"""
+        start_time = time.time()
         im_search, im_source = im_search.copy(), im_source.copy()
         # 第一步: 获取特征点集并匹配出特征点对
         kp_sch, kp_src, good = self.get_key_points(im_search=im_search, im_source=im_source)
@@ -42,11 +44,13 @@ class SIFT(object):
         target_img = im_source[y_min:y_max, x_min:x_max]
         # 计算相似度
         confidence = self._cal_sift_confidence(resize_img=target_img, im_search=im_search)
-        print('{Rect}, confidence={confidence}'.format(confidence=confidence, Rect=rect))
+        print('{Rect}, confidence={confidence}, time={time:.1f}ms'.format(confidence=confidence, Rect=rect,
+                                                                        time=(time.time() - start_time)*1000))
         return rect if confidence > threshold else None
 
     def find_sift_narrow(self, im_source: ndarray, im_search: ndarray, threshold: int = 0.8):
         """基于FlannBasedMatcher的SIFT实现, 通过缩小图像大小增快速度"""
+        start_time = time.time()
         im_search, im_source = im_search.copy(), im_source.copy()
         # 第一步: 缩放图片大小
         narrow_src = cv2.resize(im_source, (int(im_source.shape[1] / self.NARROW_RATIO),
@@ -64,7 +68,8 @@ class SIFT(object):
         target_img = im_source[rect.tl.y:rect.br.y, rect.tl.x:rect.br.x]
         # 计算相似度
         confidence = self._cal_sift_confidence(resize_img=target_img, im_search=im_search)
-        print('{Rect}, confidence={confidence}'.format(confidence=confidence, Rect=rect))
+        print('{Rect}, confidence={confidence}, time={time:.1f}ms'.format(confidence=confidence, Rect=rect,
+                                                                        time=(time.time() - start_time)*1000))
         return rect if confidence > threshold else None
 
     def extract_good_points(self, im_source, im_search, kp_sch, kp_src, good):

@@ -14,6 +14,7 @@ from typing import Union, Tuple
 import numpy as np
 from loguru import logger
 
+from core.utils.base import SUBPROCESS_FLAG
 from core.constant import DEFAULT_ADB_PATH, SHELL_ENCODING, ADB_CAP_NAME_RAW, ADB_CAP_REMOTE_RAW_PATH, \
     ADB_CAP_LOCAL_PATH, ADB_CAP_REMOTE_PATH
 from core.error import AdbError
@@ -118,7 +119,7 @@ class _ADB(object):
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NO_WINDOW
+            creationflags=SUBPROCESS_FLAG
         )
         return proc
 

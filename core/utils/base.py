@@ -2,6 +2,7 @@
 # -*- coding:utf-8 -*-
 import sys
 import os
+import subprocess
 from loguru import logger as loguru
 from core.constant import filter_level
 
@@ -24,3 +25,16 @@ class auto_increment(object):
     def __call__(self):
         self._val += 1
         return self._val
+
+
+if sys.platform.startswith("win"):
+    # Don't display the Windows GPF dialog if the invoked program dies.
+    try:
+        SUBPROCESS_FLAG = subprocess.CREATE_NO_WINDOW  # in Python 3.7+
+    except AttributeError:
+        import ctypes
+        SEM_NOGPFAULTERRORBOX = 0x0002  # From MSDN
+        ctypes.windll.kernel32.SetErrorMode(SEM_NOGPFAULTERRORBOX)  # win32con.CREATE_NO_WINDOW?
+        SUBPROCESS_FLAG = 0x8000000
+else:
+    SUBPROCESS_FLAG = 0
