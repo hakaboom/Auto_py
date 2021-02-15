@@ -5,6 +5,7 @@ import cv2
 import time
 import numpy as np
 from coordinate import Rect
+from core.cv.base_image import check_detection_input
 
 
 def cal_rgb_confidence(img_src_rgb, img_sch_rgb):
@@ -28,6 +29,7 @@ def find_template(im_source, im_search, threshold: int = 0.85, mode=cv2.TM_CCOEF
     :param mode: 识别模式
     :return: None or Rect
     """
+    im_source, im_search = check_detection_input(im_source, im_search)
     # 模板匹配取得res矩阵
     res = cv2.matchTemplate(im_source, im_search, mode)
     # 找到最佳匹配项
@@ -47,6 +49,7 @@ def find_template(im_source, im_search, threshold: int = 0.85, mode=cv2.TM_CCOEF
 
 
 def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEFF_NORMED, max_count=10):
+    im_source, im_search = check_detection_input(im_source, im_search)
     # 模板匹配取得res矩阵
     res = cv2.matchTemplate(im_source, im_search, mode)
 

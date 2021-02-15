@@ -157,6 +157,7 @@ class Size(object):
             logger.error('目标对象不是Size类,请检查')
             return False
 
+
 Size.ZERO = Size(0, 0)
 Size.INVALID = Size(-1, -1)
 
@@ -201,6 +202,10 @@ class Rect(object):
             if self.contains(v.tl) and self.contains(v.br):
                 return True
         return False
+
+    @staticmethod
+    def init_width_point_size(point: Point, size: Size):
+        return Rect(point.x, point.y, size.width, size.height)
 
 
 Rect.ZERO = Rect(0, 0, 0, 0)

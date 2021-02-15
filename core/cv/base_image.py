@@ -2,12 +2,11 @@
 # -*- coding:utf-8 -*-
 import cv2
 import time
+from coordinate import Rect, Size
 from core.constant import ADB_CAP_REMOTE_PATH
-from coordinate import Rect
-from core.cv.thresholding import otsu
 from core.cv.utils import read_image, bgr_2_gray, bytes_2_img
+from core.cv.thresholding import otsu
 from core.utils.base import auto_increment
-from typing import Tuple, Union
 import numpy as np
 from loguru import logger
 
@@ -16,16 +15,14 @@ class _image(object):
     def __init__(self, img=None, flags=cv2.IMREAD_COLOR, adb=None):
         self.tmp_path = adb and ADB_CAP_REMOTE_PATH.format(adb.get_device_id().replace(':', '_')) or './tmp/'
         self.image_data = None
-        # self._capFunction = capFunction
-        # self.imwrite(img, flags)
-
-    def imread(self) -> np.ndarray:
-        return self.image_data
+        if img is not None:
+            self.imwrite(img, flags)
 
     def save_2_path(self, path=None):
         if self.imread() is None:
             raise ValueError('没有缓存图片')
-        path = self.path or path
+        path = path or self.path
+        print(path)
         cv2.imwrite(path, self.imread())
 
     def imwrite(self, img, flags: int = cv2.IMREAD_COLOR):
@@ -40,6 +37,9 @@ class _image(object):
         else:
             raise ValueError('unknown image, type:{}, image={} '.format(type(img), img))
 
+    def imread(self) -> np.ndarray:
+        return self.image_data
+
     def clean_image(self):
         """清除缓存"""
         self.image_data = None
@@ -51,6 +51,10 @@ class _image(object):
     @property
     def path(self):
         return self.tmp_path
+
+    @property
+    def size(self):
+        return Size(self.shape[1], self.shape[0])
 
 
 class image(_image):
@@ -105,16 +109,25 @@ class image(_image):
         if not Rect(0, 0, width, height).contains(rect):
             raise OverflowError('Rect不能超出屏幕 {}'.format(rect))
         # 获取在图像中的实际有效区域：
-        x_min, y_min = rect.tl.x, rect.tl.y
-        x_max, y_max = rect.br.x, rect.br.y
-        x_min, y_min = max(0, x_min), max(0, y_min)
-        x_min, y_min = min(width - 1, x_min), min(height - 1, y_min)
-        x_max, y_max = max(0, x_max), max(0, y_max)
-        x_max, y_max = min(width - 1, x_max), min(height - 1, y_max)
-
+        x_min, y_min = int(rect.tl.x), int(rect.tl.y)
+        x_max, y_max = int(rect.br.x), int(rect.br.y)
         return image(img[y_min:y_max, x_min:x_max])
 
     def binarization(self):
         img = self.imread()
         img = bgr_2_gray(img)
         return image(otsu(img))
+
+    def rectangle(self, rect: Rect):
+        """在图像上画出矩形"""
+        pt1 = rect.tl
+        pt2 = rect.br
+        cv2.rectangle(self.imread(), (pt1.x, pt1.y), (pt2.x, pt2.y), (0, 255, 0), 2)
+
+    def resize(self, w, h):
+        self.imwrite(cv2.resize(self.imread(), (int(w), int(h))))
+        return self
+
+
+def check_detection_input(im_source, im_search):
+    return image(im_source).imread(), image(im_search).imread()

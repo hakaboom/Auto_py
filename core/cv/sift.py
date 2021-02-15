@@ -7,7 +7,8 @@ import time
 import cv2
 import numpy as np
 from numpy import ndarray
-
+from core.cv.utils import create_similar_rect, generate_result
+from core.cv.base_image import check_detection_input
 from core.cv.match_template import cal_rgb_confidence
 from coordinate import Rect, Size
 
@@ -16,8 +17,6 @@ class SIFT(object):
     FLANN_INDEX_KDTREE = 0
     FILTER_RATIO = 0.59
     ONE_POINT_CONFI = 0.5
-    # 图像缩放倍率 用于缩小im_source大小,加快SIFT特征点获取速度,但是会损失精度
-    NARROW_RATIO = 2
 
     def __init__(self):
         # 创建SIFT实例
@@ -28,60 +27,61 @@ class SIFT(object):
         search_params = dict(checks=50)
         self.flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-    def find_sift(self, im_source: ndarray, im_search: ndarray, threshold: int = 0.8):
+    def find_sift(self, im_source, im_search, threshold: int = 0.8):
         """基于FlannBasedMatcher的SIFT实现"""
         start_time = time.time()
-        im_search, im_source = im_search.copy(), im_source.copy()
-        # 第一步: 获取特征点集并匹配出特征点对
+        im_source, im_search = check_detection_input(im_source, im_search)
+        # 第一步: 获取特征点集并匹配出特征点对 (最耗时的一段)
         kp_sch, kp_src, good = self.get_key_points(im_search=im_search, im_source=im_source)
         # 第二步：根据匹配点对(good),提取出来识别区域:
-        rect = self.extract_good_points(im_source, im_search, kp_sch, kp_src, good)
+        rect = self.extract_good_points(im_source, im_search, kp_sch, kp_src, good, threshold)
         if not rect:
             return None
-        # 第三步：根据识别区域，通过模板匹配,求出结果可信度，并将结果进行返回:
-        x_min, y_min = rect.tl.x, rect.tl.y
-        x_max, y_max = rect.br.x, rect.br.y
-        target_img = im_source[y_min:y_max, x_min:x_max]
-        # 计算相似度
-        confidence = self._cal_sift_confidence(resize_img=target_img, im_search=im_search)
-        print('{Rect}, confidence={confidence}, time={time:.1f}ms'.format(confidence=confidence, Rect=rect,
-                                                                        time=(time.time() - start_time)*1000))
-        return rect if confidence > threshold else None
+        # 第三步,通过识别矩阵周围+-1像素的矩阵,求出结果可信度，并且返回最大精准度的范围
+        confidences = []
+        similar_rect = create_similar_rect(rect.x, rect.y, rect.width, rect.height)
+        h, w = im_search.shape[:2]
+        for i in similar_rect:
+            # cv2.matchTemplate 目标和模板长宽不能一大一小
+            target_img = im_source[i.tl.y:i.br.y, i.tl.x:i.br.x]
+            target_img = cv2.resize(target_img, (w, h))
+            confidences.append(self._cal_sift_confidence(resize_img=target_img, im_search=im_search))
+        # 提取最大值
+        if confidences:
+            confidence = max(confidences)
+            rect = similar_rect[confidences.index(confidence)]
+        else:
+            confidence = 0
+        best_match = generate_result(rect=rect, confi=confidence)
+        print('[sift]:{Rect}, confidence={confidence:.5f}, time={time:.1f}ms'.
+              format(confidence=confidence, Rect=rect, time=(time.time() - start_time)*1000))
+        return best_match if confidence > threshold else None
 
-    def find_sift_narrow(self, im_source: ndarray, im_search: ndarray, threshold: int = 0.8):
-        """基于FlannBasedMatcher的SIFT实现, 通过缩小图像大小增快速度"""
-        start_time = time.time()
-        im_search, im_source = im_search.copy(), im_source.copy()
-        # 第一步: 缩放图片大小
-        narrow_src = cv2.resize(im_source, (int(im_source.shape[1] / self.NARROW_RATIO),
-                                            int(im_source.shape[0] / self.NARROW_RATIO)))
-        # 第二步: 获取特征点集并匹配出特征点对
-        kp_sch, kp_src, good = self.get_key_points(im_search=im_search, im_source=narrow_src)
-        # 第三步：根据匹配点对(good),提取出来识别区域:
-        rect = self.extract_good_points(narrow_src, im_search, kp_sch, kp_src, good)
-        if not rect:
-            return None
-        # 第三步：根据识别区域，通过模板匹配,求出结果可信度，并将结果进行返回:
-        # 将返回的范围按照缩放倍率重新放大
-        rect.x, rect.y = int(rect.x * self.NARROW_RATIO), int(rect.y * self.NARROW_RATIO)
-        rect.width, rect.height = int(rect.width * self.NARROW_RATIO), int(rect.height * self.NARROW_RATIO)
-        target_img = im_source[rect.tl.y:rect.br.y, rect.tl.x:rect.br.x]
-        # 计算相似度
-        confidence = self._cal_sift_confidence(resize_img=target_img, im_search=im_search)
-        print('{Rect}, confidence={confidence}, time={time:.1f}ms'.format(confidence=confidence, Rect=rect,
-                                                                        time=(time.time() - start_time)*1000))
-        return rect if confidence > threshold else None
-
-    def extract_good_points(self, im_source, im_search, kp_sch, kp_src, good):
+    def extract_good_points(self, im_source, im_search, kp_sch, kp_src, good, threshold):
         if len(good) == 0:
             # 没有匹配点,直接返回None
             return None
+        elif len(good) == 1:
+            # 匹配点对为1，可信度赋予设定值，并直接返回:
+            origin_result = self._handle_one_good_points(kp_src, good, threshold)
+            return None
+        elif len(good) == 2:
+            # 匹配点对为2，根据点对求出目标区域，据此算出可信度：
+            origin_result = self._handle_two_good_points(im_source, im_search, kp_src, kp_sch, good)
+            if isinstance(origin_result, dict):
+                return None
+            else:
+                return origin_result
         elif len(good) == 3:
-            rect = self._handle_three_good_points(im_source, im_search, kp_sch, kp_src, good)
-        elif len(good) >= 4:
-            # 匹配点大于5,使用单矩阵映射求出目标区域
-            rect = self._many_good_pts(im_source, im_search, kp_sch, kp_src, good)
-        return rect
+            # 匹配点对为3，取出点对，求出目标区域，据此算出可信度：
+            origin_result = self._handle_three_good_points(im_source, im_search, kp_sch, kp_src, good)
+            if isinstance(origin_result, dict):
+                return None
+            else:
+                return origin_result
+        else:
+            # 匹配点大于4,使用单矩阵映射求出目标区域
+            return self._many_good_pts(im_source, im_search, kp_sch, kp_src, good)
 
     def get_keypoints_and_descriptors(self, image):
         """获取图像特征点和描述符."""
@@ -103,9 +103,29 @@ class SIFT(object):
             if m.distance < self.FILTER_RATIO * n.distance:
                 good.append(m)
         # img = cv2.drawMatchesKnn(im_search, kp_sch, im_source, kp_src, np.expand_dims(good, 1), None, flags=2)
+        # img = cv2.drawMatchesKnn(im_search, kp_sch, im_source, kp_src, matches, None, flags=2)
+        # cv2.namedWindow('test', cv2.WINDOW_KEEPRATIO)
         # cv2.imshow('test', img)
         # cv2.waitKey(0)
         return kp_sch, kp_src, good
+
+    def _handle_one_good_points(self, kp_src, good, threshold):
+        """sift匹配中只有一对匹配的特征点对的情况."""
+        # 识别中心即为该匹配点位置:
+        middle_point = int(kp_src[good[0].trainIdx].pt[0]), int(kp_src[good[0].trainIdx].pt[1])
+        confidence = self.ONE_POINT_CONFI
+        # 单个特征点对,识别区域无效化:
+        pypts = [middle_point for i in range(4)]
+        return None if confidence > threshold else middle_point
+
+    def _handle_two_good_points(self, im_source, im_search, kp_src, kp_sch, good):
+        """处理两对特征点的情况."""
+        pts_sch1 = int(kp_sch[good[0].queryIdx].pt[0]), int(kp_sch[good[0].queryIdx].pt[1])
+        pts_sch2 = int(kp_sch[good[1].queryIdx].pt[0]), int(kp_sch[good[1].queryIdx].pt[1])
+        pts_src1 = int(kp_src[good[0].trainIdx].pt[0]), int(kp_src[good[0].trainIdx].pt[1])
+        pts_src2 = int(kp_src[good[1].trainIdx].pt[0]), int(kp_src[good[1].trainIdx].pt[1])
+
+        return self._two_good_points(pts_sch1, pts_sch2, pts_src1, pts_src2, im_search, im_source)
 
     def _handle_three_good_points(self, im_source, im_search, kp_sch, kp_src, good):
         """处理三对特征点的情况."""
