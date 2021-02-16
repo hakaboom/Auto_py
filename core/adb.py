@@ -30,9 +30,7 @@ class _ADB(object):
         self._set_cmd_options(host, port)
         self.connect()
         self._event_path = None  # event信息
-        self._forward_local_using = self.get_forwards()  # 已经使用的端口
         self._display_info = []  # 需要通过minicap模块获取
-        self._sdk_version = int(self.sdk_version())
         self._line_breaker = None
         # 截图文件名字
         self._cap_name = ADB_CAP_NAME_RAW.format(device_id.replace(':', '_'))
@@ -42,7 +40,9 @@ class _ADB(object):
         self._cap_remote_path = ADB_CAP_REMOTE_PATH.format(device_id.replace(':', '_'))
         # raw临时文件存放到工程的路径
         self._cap_raw_remote_path = ADB_CAP_REMOTE_RAW_PATH.format(self._cap_name)
-        # 图片缓存函数
+        # 已经使用的端口
+        self._forward_local_using = self.get_forwards()
+        self._sdk_version = int(self.sdk_version())
 
     @staticmethod
     def builtin_adb_path() -> str:
@@ -485,7 +485,7 @@ class _ADB(object):
             返回一个包含占用信息的列表,每个包含键值local和remote
         """
         l = []
-        out = self.cmd(['forward', '--list'])
+        out = self.cmd(['forward', '--list'], devices=False, skip_error=True)
         for line in out.splitlines():
             line = line.strip()
             if not line:
@@ -501,10 +501,11 @@ class _ADB(object):
 class _Device(_ADB):
     def get_screen_size(self) -> Tuple[int, int]:
         wm_size = self.raw_shell(['wm', 'size'])
-        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
-        x, y = int(wm_size[0][0]), int(wm_size[0][1])
-        if x < y:
-            x, y = y, x
+        # wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
+        # x, y = int(wm_size[0][0]), int(wm_size[0][1])
+        # if x < y:
+        #     x, y = y, x
+        x, y = 3120, 1440
         return x, y
 
     def get_display_info(self):

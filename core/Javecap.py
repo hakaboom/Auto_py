@@ -78,10 +78,3 @@ class Javacap(Yosemite):
         if self.frame_gen is None:
             self.frame_gen = self.get_frames()
         return self.frame_gen.send(None)
-
-    # def screenshot(self):
-    #     screen = self.get_frame_from_stream()
-    #     nparr = np.frombuffer(screen, np.uint8)
-    #     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    #     cv2.imwrite(self.JAC_CAP_PATH, img)
-    #     logger.info('%s screencap' % self.adb.get_device_id())

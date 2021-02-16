@@ -144,7 +144,7 @@ class Touch(object):
         down = self._build_down(x, y, index)
         up = self._build_up(x, y, index)
         self.adb.start_shell('{}&&{}'.format(down, up))
-        logger.debug('adb touch point:(x={},y={})', x, y)
+        logger.info('adb touch point:(x={},y={})', x, y)
 
     def long_click(self, x: int, y: int, index: int = 1, duration: int = 500):
         down = self._build_down(x, y, index)

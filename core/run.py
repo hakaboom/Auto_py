@@ -19,29 +19,18 @@ initLogger()
 
 class Android(object):
     def __init__(self, device_id=None, adb_path=None, host='127.0.0.1', port=5037,
-                 touch_method: str = 'minitouch', cap_method: str = 'minicap'):
+                 touch_method: str = TOUCH_METHOD.MINITOUCH,
+                 cap_method: str = CAP_METHOD.MINICAP):
         self.adb = ADB(device_id, adb_path, host, port)
         # cap mode
-        if cap_method == 'minicap':
-            self.minicap = Minicap(self.adb)
-            self.cap_method = CAP_METHOD.MINICAP
-        elif cap_method == 'javacap':
-            self.javacap = Javacap(self.adb)
-            self.cap_method = CAP_METHOD.JAVACAP
-        elif cap_method == 'adbcap':
-            self.cap_method = CAP_METHOD.ADBCAP
-        else:
-            raise ValueError("please choice cap_method ('minicap','javacap','adbcap')")
+        self.cap_method = cap_method
+        self.minicap = Minicap(self.adb)
+        self.javacap = Javacap(self.adb)
         # touch mode
-        if touch_method == 'minitouch':
-            self.minitouch = Minitouch(self.adb)
-            self.touch_method = TOUCH_METHOD.MINITOUCH
-        elif touch_method == 'adbtouch':
-            self.adbtouch = ADBTOUCH(self.adb)
-            self.touch_method = TOUCH_METHOD.ADBTOUCH
-        else:
-            raise ValueError("please choice touch_method ('minitouch','adbtouch')")
-        self.tmp_image = Image(adb=self.adb)
+        self.touch_method = touch_method
+        self.minitouch = Minitouch(self.adb)
+        self.adbtouch = ADBTOUCH(self.adb)
+        self.tmp_image = Image(self.adb)
 
     def screenshot(self):
         stamp = time.time()

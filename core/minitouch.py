@@ -88,7 +88,6 @@ class _Minitouch(transform):
         # 如果之前服务在运行,则销毁
         self.adb.kill_process(name=MNT_HOME)
         time.sleep(1)
-
         self.adb.start_shell("{path} -n '{name}'".format(path=self.MNT_HOME, name=self.MNT_LOCAL_NAME))
         time.sleep(1)
 
@@ -97,7 +96,6 @@ class _Minitouch(transform):
 
         # get minitouch server info
         socket_out = client.makefile()
-
         # v <version>
         # protocol version, usually it is 1. needn't use this
         version = re.findall(r'(\d+)', socket_out.readline())
