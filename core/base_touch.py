@@ -8,15 +8,14 @@ from loguru import logger
 
 
 class Touch_event(object):
-    def __init__(self, event_path: str, event_size: dict, screen_size: dict, orientation: int = 1):
+    def __init__(self, event_path: str, event_size: dict, display_info: dict):
         self.event_id = 1
         self.index_count = 0
         self.index = [False, False, False, False, False, False, False, False, False, False, False]
         self.event_path = event_path
         self.event_size = event_size
-        self.screen_size = screen_size
+        self.display_info = display_info
         self.event_scale = self.event_size2windows()
-        self.orientation = orientation
 
     def add_event_id(self):
         self.event_id += 1
@@ -33,51 +32,47 @@ class Touch_event(object):
 
     def event_size2windows(self):
         return {
-            'width': self.screen_size['width'] / self.event_size['width'],
-            'height': self.screen_size['height'] / self.event_size['height']
+            'width': self.display_info['width'] / self.event_size['width'],
+            'height': self.display_info['height'] / self.event_size['height']
         }
 
     def transform(self, x, y):
-        if self.orientation == 1:
+        if self.display_info['orientation'] == 0:
             return self.right2right(x, y)
-        if self.orientation == 2:
+        elif self.display_info['orientation'] == 1:
             return self.left2right(x, y)
-        if self.orientation == 3:
+        elif self.display_info['orientation'] == 2:
             return self.portrait2right(x, y)
 
     def right2right(self, x, y):
         return x / self.event_scale['width'], y / self.event_scale['height']
 
     def portrait2right(self, x, y):
-        return (x / self.screen_size['height'] * self.screen_size['width']) / self.event_scale['width'], (
-                y / self.screen_size['width'] * self.screen_size['height'] / self.event_scale['height'])
+        return (x / self.display_info['height'] * self.display_info['width']) / self.event_scale['width'], (
+                y / self.display_info['width'] * self.display_info['height'] / self.event_scale['height'])
 
     def left2right(self, x, y):
-        return (1 - x / self.screen_size['height']) * self.screen_size['width'] / self.event_scale['height'], (
-                1 - y / self.screen_size['width']) * self.screen_size['height'] / self.event_scale['height']
+        return (1 - x / self.display_info['height']) * self.display_info['width'] / self.event_scale['height'], (
+                1 - y / self.display_info['width']) * self.display_info['height'] / self.event_scale['height']
 
 
 class Touch(object):
     """
         基本触摸函数,通过adb操作
         函数内时间单位为ms,间隔最好不要低于50ms
-        就是使用setevent,不写注释了
+        使用setevent
     """
 
-    def __init__(self, adb: ADB, orientation: int = 1):
+    def __init__(self, adb: ADB):
         self.adb = adb
         path, name, width, height = self._get_event()
         self.event_path = path
         self.event_name = name
         self.event_size = {'width': width, 'height': height}
-        self.screen_size = self._get_screen_size()
+        self.display_info = self.adb.get_display_info()
         self.Touch_event = Touch_event(event_path=self.event_path, event_size=self.event_size,
-                                       screen_size=self.screen_size, orientation=orientation)
-        logger.info('adb_touch init ,event_path:{}'.format(path))
-
-    def _get_screen_size(self):
-        x, y = self.adb.get_screen_size()
-        return {'width': x, 'height': y}
+                                       display_info=self.display_info)
+        logger.info('adb_touch init, event_path:{}'.format(path))
 
     def _get_event(self):
         """获取包含0035,0036的event文件"""

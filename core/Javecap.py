@@ -6,6 +6,7 @@ import struct
 from core.constant import JAC_LOCAL_NAME, JAC_CAP_PATH
 from core.yosemite import Yosemite
 from core.utils.safesocket import SafeSocket
+from core.utils.snippet import reg_cleanup
 from core.utils.nbsp import NonBlockingStreamReader
 from loguru import logger
 
@@ -22,11 +23,14 @@ class Javacap(Yosemite):
     def __init__(self, adb):
         super(Javacap, self).__init__(adb)
         self.JAC_LOCAL_NAME = JAC_LOCAL_NAME.format(self.adb.get_device_id())
-        self.JAC_CAP_PATH = JAC_CAP_PATH.format(self.adb.get_device_id().replace(':', '_'))
         self.frame_gen = None
+        # start server
+        self._setup_stream_server()
+        self.adb.set_forward('localabstract:%s' % self.JAC_LOCAL_NAME)
+        self.JAC_PORT = self.adb.get_forward_port(self.JAC_LOCAL_NAME)
+        logger.info('javacap init, port:{} name:{}', self.JAC_PORT, self.JAC_LOCAL_NAME)
 
     def _setup_stream_server(self):
-        self.adb.set_forward('localabstract:%s' % self.JAC_LOCAL_NAME)
         apkpath = self.adb.path_app(self.APP_PKG)
         cmds = ["CLASSPATH=" + apkpath, 'exec', 'app_process', '/system/bin', self.SCREENCAP_SERVICE,
                 "--scale", "100", "--socket", "%s" % self.JAC_LOCAL_NAME, "-lazy", "2>&1"]
@@ -40,13 +44,13 @@ class Javacap(Yosemite):
                 break
             if b"Address already in use" in line:
                 raise RuntimeError("javacap server setup error: %s" % line)
+        reg_cleanup(proc.kill)
         return proc, nbsp
 
     def get_frames(self):
         proc, nbsp = self._setup_stream_server()
-        localport = self.adb.get_forward_port(self.JAC_LOCAL_NAME)
         s = SafeSocket()
-        s.connect((self.adb.host, localport))
+        s.connect((self.adb.host, self.JAC_PORT))
         t = s.recv(24)
         # javacap header
         logger.debug(struct.unpack("<2B5I2B", t))
@@ -72,7 +76,7 @@ class Javacap(Yosemite):
         s.close()
         nbsp.kill()
         proc.kill()
-        self.adb.remove_forward("tcp:%s" % localport)
+        self.adb.remove_forward("tcp:%s" % self.JAC_PORT)
 
     def get_frame_from_stream(self) -> bytes:
         if self.frame_gen is None:

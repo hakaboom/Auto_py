@@ -53,8 +53,9 @@ class SIFT(object):
         else:
             confidence = 0
         best_match = generate_result(rect=rect, confi=confidence)
-        print('[sift]:{Rect}, confidence={confidence:.5f}, time={time:.1f}ms'.
-              format(confidence=confidence, Rect=rect, time=(time.time() - start_time)*1000))
+        print('[sift]:{Rect}, confidence=(max={max_confidence:.5f},min={min_confidence:.5f}), time={time:.1f}ms'.
+              format(max_confidence=max(confidences), min_confidence=min(confidences),
+                     Rect=rect, time=(time.time() - start_time)*1000))
         return best_match if confidence > threshold else None
 
     def extract_good_points(self, im_source, im_search, kp_sch, kp_src, good, threshold):

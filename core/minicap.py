@@ -5,11 +5,11 @@ import re
 import time
 
 from loguru import logger
-
 from core.adb import ADB
-from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME, MNC_CAP_REMOTE_PATH,
+from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME,
                            MNC_LOCAL_NAME, MNC_INSTALL_PATH, MNC_SO_INSTALL_PATH)
 from core.utils.safesocket import SafeSocket
+from core.utils.snippet import reg_cleanup
 from typing import Tuple
 
 
@@ -35,6 +35,22 @@ class _Minicap(object):
         self._sdk_version = self.adb.sdk_version()
         # 开启服务
         self.start_mnc_server()
+
+    def start_mnc_server(self):
+        """
+        command adb shell {self.MNC_CMD} -P 1920x1080@1920x1080/0 开启minicap服务
+        """
+        self.set_minicap_port()
+        # 如果之前服务在运行,则销毁
+        self.adb.kill_process(name=self.MNC_HOME)
+        self.display_info = self.get_display_info()
+        proc = self.adb.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
+                                     '%dx%d@%dx%d/%d 2>&1' % (self.display_info['width'], self.display_info['height'],
+                                                              self.display_info['width'], self.display_info['height'],
+                                                              self.display_info['rotation'])])
+        reg_cleanup(proc.kill)
+        time.sleep(.5)
+        return proc
 
     def set_minicap_port(self):
         """
@@ -111,27 +127,9 @@ class _Minicap(object):
         #     display_info['height'],display_info['width'] = display_info['width'], display_info['height']
         return display_info
 
-    def start_mnc_server(self):
-        """
-        command adb shell {self.MNC_CMD} -P 1920x1080@1920x1080/0 开启minicap服务
-        :return:
-            None
-        """
-        self.set_minicap_port()
-        # 如果之前服务在运行,则销毁
-        self.adb.kill_process(name=MNC_HOME)
-        self.display_info = self.get_display_info()
-        proc = self.adb.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
-                                     '%dx%d@%dx%d/%d 2>&1' % (self.display_info['width'], self.display_info['height'],
-                                                              self.display_info['width'], self.display_info['height'],
-                                                              self.display_info['rotation'])])
-        logger.info('%s minicap server is running' % self.adb.get_device_id())
-        time.sleep(.5)
-        return proc
-
 
 class Minicap(_Minicap):
-    def get_frame(self) -> Tuple[bytes, int]:
+    def get_frame(self) -> bytes:
         """
         通过socket读取minicap的图片数据,并且通过cv2生成图片,静态页面速度会比adb方法较慢
         :return:
@@ -182,7 +180,7 @@ class Minicap(_Minicap):
                         if hex(frameBody[0]) != '0xff' or hex(frameBody[1]) != '0xd8':
                             exit()
                         s.close()
-                        return frameBody, (time.time() - stamp) * 1000
+                        return frameBody
                     else:
                         # else this chunk is still for the current image
                         frameBody = bytes(list(frameBody) + list(chunk[cursor:len(chunk)]))

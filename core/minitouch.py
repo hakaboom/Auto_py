@@ -14,11 +14,12 @@ from core.utils.snippet import str2byte
 
 class transform(object):
     """通过minitouch的max_x,max_y与屏幕适配"""
-    def __init__(self, max_x: int = 0, max_y: int = 0, orientation: int = 1, screen_size: dict = None):
-        self.event_size = {'width': max_x, 'height': max_y}
-        self.screen_size = screen_size
-        self.event_scale = self.event2windows()
+    def __init__(self, display_info: dict, max_x: int = 0, max_y: int = 0, orientation: int = 1, screen_size: dict = None):
         self.orientation = orientation
+        self.display_info = display_info
+        self.event_size = dict(width=display_info['max_x'], height=display_info['max_y'])
+        self.screen_size = dict(width=display_info['width'], height=display_info['height'])
+        self.event_scale = self.event2windows()
 
     def event2windows(self):
         return {
@@ -52,17 +53,23 @@ class _Minitouch(transform):
         self.adb = adb
         self.HOME = TEMP_HOME
         self.MNT_HOME = MNT_HOME
+        self.MNT_PORT = 0
         self.MNT_LOCAL_NAME = MNT_LOCAL_NAME.format(self.adb.get_device_id())
         self._abi_version = self.adb.abi_version()
-        self.max_x = self.max_y = self.MNT_PORT = 0
+        self.max_x, self.max_y = 0, 0
         self.set_minitouch_port()
         self.start_minitouch_server()
-        super(_Minitouch, self).__init__(max_x=self.max_x, max_y=self.max_y, orientation=1,
-                                         screen_size=self._get_screen_size())
+        super(_Minitouch, self).__init__(display_info=self._get_display_info())
+        logger.info('minitouch init, port:{} name:{}, max_x={}, max_y={}', self.MNT_PORT, self.MNT_LOCAL_NAME,
+                    self.max_x, self.max_y)
 
-    def _get_screen_size(self):
-        x, y = self.adb.get_screen_size()
-        return {'width': x, 'height': y}
+    def _get_display_info(self):
+        display_info = self.adb.get_display_info()
+        display_info.update({
+            'max_x': self.max_x,
+            'max_y': self.max_y
+        })
+        return display_info
 
     def _push_target_mnt(self):
         """ push specific minitouch """
@@ -102,7 +109,6 @@ class _Minitouch(transform):
         # ^ <max-contacts> <max-x> <max-y> <max-pressure>
         max_contacts, max_x, max_y, max_pressure = re.findall(r'(\d+)', socket_out.readline())
         self.max_x, self.max_y = int(max_x), int(max_y)
-
         # $ <pid>
         pid = re.findall(r'(\d+)', socket_out.readline())
         self.client = client
@@ -119,11 +125,12 @@ class _Minitouch(transform):
         return self.client.recv(0)
 
     def transform(self, x, y):
-        if self.orientation == 1:
+        print(x, y)
+        if self.display_info['orientation'] == 0:
             return self.right2right(x, y)
-        if self.orientation == 2:
+        elif self.display_info['orientation'] == 1:
             return self.left2right(x, y)
-        if self.orientation == 3:
+        elif self.display_info['orientation'] == 2:
             return self.portrait2right(x, y)
 
 

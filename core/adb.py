@@ -33,11 +33,11 @@ class _ADB(object):
         self._display_info = []  # 需要通过minicap模块获取
         self._line_breaker = None
         # 截图文件名字
-        self._cap_name = ADB_CAP_NAME_RAW.format(device_id.replace(':', '_'))
+        self._cap_name = ADB_CAP_NAME_RAW.format(self.get_device_id(decode=True))
         # 截图在手机上的路径
         self._cap_local_path = ADB_CAP_LOCAL_PATH.format(self._cap_name)
         # 截图png存放到工程的路径
-        self._cap_remote_path = ADB_CAP_REMOTE_PATH.format(device_id.replace(':', '_'))
+        self._cap_remote_path = ADB_CAP_REMOTE_PATH.format(self.get_device_id(decode=True))
         # raw临时文件存放到工程的路径
         self._cap_raw_remote_path = ADB_CAP_REMOTE_RAW_PATH.format(self._cap_name)
         # 已经使用的端口
@@ -434,8 +434,8 @@ class _ADB(object):
         self.start_shell(['kill', str(pid)])
         logger.info('{} PID:{} NAME:{} is kill', self.device_id, pid, out[0]['NAME'])
 
-    def get_device_id(self) -> str:
-        return self.device_id
+    def get_device_id(self, decode: bool = False) -> str:
+        return decode and self.device_id.replace(':', '_') or self.device_id
 
     def set_forward(self, remote: str):
         """
@@ -497,26 +497,118 @@ class _ADB(object):
             l.append({'local': local, 'remote': remote})
         return l
 
+    def get_display_info(self):
+        display_info = self.getPhysicalDisplayInfo()
+        orientation = self.getDisplayOrientation()
+        max_x, max_y = self.getMaxXY()
+        display_info.update({
+            "orientation": orientation,
+            "rotation": orientation * 90,
+            "max_x": max_x,
+            "max_y": max_y,
+        })
+        return display_info
+
+    def getMaxXY(self):
+        ret = self.shell('getevent -p').split('\n')
+        max_x, max_y = None, None
+        for i in ret:
+            if i.find("0035") != -1:
+                patten = re.compile(r'max [0-9]+')
+                ret = patten.search(i)
+                if ret:
+                    max_x = int(ret.group(0).split()[1])
+
+            if i.find("0036") != -1:
+                patten = re.compile(r'max [0-9]+')
+                ret = patten.search(i)
+                if ret:
+                    max_y = int(ret.group(0).split()[1])
+        return max_x, max_y
+
+    def getPhysicalDisplayInfo(self):
+        """
+        Get value for display dimension and density from `mPhysicalDisplayInfo` value obtained from `dumpsys` command.
+
+        Returns:
+            physical display info for dimension and density
+
+        """
+        phyDispRE = re.compile('.*PhysicalDisplayInfo{(?P<width>\d+) x (?P<height>\d+), .*, density (?P<density>[\d.]+).*')
+        out = self.raw_shell('dumpsys display')
+        m = phyDispRE.search(out)
+        if m:
+            displayInfo = {}
+            for prop in ['width', 'height']:
+                displayInfo[prop] = int(m.group(prop))
+            for prop in ['density']:
+                # In mPhysicalDisplayInfo density is already a factor, no need to calculate
+                displayInfo[prop] = float(m.group(prop))
+            return displayInfo
+
+        # This could also be mSystem or mOverscanScreen
+        phyDispRE = re.compile('\s*mUnrestrictedScreen=\((?P<x>\d+),(?P<y>\d+)\) (?P<width>\d+)x(?P<height>\d+)')
+        # This is known to work on older versions (i.e. API 10) where mrestrictedScreen is not available
+        dispWHRE = re.compile('\s*DisplayWidth=(?P<width>\d+) *DisplayHeight=(?P<height>\d+)')
+        out = self.raw_shell('dumpsys window')
+        m = phyDispRE.search(out, 0)
+        if not m:
+            m = dispWHRE.search(out, 0)
+        if m:
+            displayInfo = {}
+            for prop in ['width', 'height']:
+                displayInfo[prop] = int(m.group(prop))
+            for prop in ['density']:
+                d = self._getDisplayDensity(None, strip=True)
+                if d:
+                    displayInfo[prop] = d
+                else:
+                    # No available density information
+                    displayInfo[prop] = -1.0
+            return displayInfo
+
+        # gets C{mPhysicalDisplayInfo} values from dumpsys. This is a method to obtain display dimensions and density
+        phyDispRE = re.compile('Physical size: (?P<width>\d+)x(?P<height>\d+).*Physical density: (?P<density>\d+)', re.S)
+        m = phyDispRE.search(self.raw_shell('wm size; wm density'))
+        if m:
+            displayInfo = {}
+            for prop in ['width', 'height']:
+                displayInfo[prop] = int(m.group(prop))
+            for prop in ['density']:
+                displayInfo[prop] = float(m.group(prop))
+            return displayInfo
+
+        return {}
+
+    def getDisplayOrientation(self):
+        """
+        Another way to get the display orientation, this works well for older devices (SDK version 15)
+
+        Returns:
+            display orientation information
+
+        """
+        # another way to get orientation, for old sumsung device(sdk version 15) from xiaoma
+        SurfaceFlingerRE = re.compile('orientation=(\d+)')
+        output = self.shell('dumpsys SurfaceFlinger')
+        m = SurfaceFlingerRE.search(output)
+        if m:
+            return int(m.group(1))
+
+        # Fallback method to obtain the orientation
+        # See https://github.com/dtmilano/AndroidViewClient/issues/128
+        surfaceOrientationRE = re.compile('SurfaceOrientation:\s+(\d+)')
+        output = self.shell('dumpsys input')
+        m = surfaceOrientationRE.search(output)
+        if m:
+            return int(m.group(1))
+
+        # We couldn't obtain the orientation
+        warnings.warn("Could not obtain the orientation, return 0")
+        return 0
+
 
 class _Device(_ADB):
-    def get_screen_size(self) -> Tuple[int, int]:
-        wm_size = self.raw_shell(['wm', 'size'])
-        # wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
-        # x, y = int(wm_size[0][0]), int(wm_size[0][1])
-        # if x < y:
-        #     x, y = y, x
-        x, y = 3120, 1440
-        return x, y
-
-    def get_display_info(self):
-        """adb获取屏幕信息"""
-        # adb获取分辨率
-        wm_size = self.raw_shell(['wm', 'size'])
-        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
-        # adb方式获取DPI
-        wm_dpi = self.raw_shell(['wm', 'density'])
-        wm_dpi = re.findall(r'Physical density: (\d+)\r', wm_dpi)
-        print(wm_size, wm_dpi)
 
     def screenshot(self, Rect: Tuple[int, int, int, int] = None):
         """

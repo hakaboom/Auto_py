@@ -9,9 +9,9 @@ from core.constant import TOUCH_METHOD, CAP_METHOD
 from core.Javecap import Javacap
 from core.utils.base import initLogger
 from core.cv.base_image import image as Image
-from core.constant import ADB_CAP_LOCAL_PATH
+from core.cv.sift import SIFT
+from core.cv.match_template import find_template, find_templates
 from loguru import logger
-from typing import Union, Tuple
 
 # 初始化loguru
 initLogger()
@@ -22,20 +22,33 @@ class Android(object):
                  touch_method: str = TOUCH_METHOD.MINITOUCH,
                  cap_method: str = CAP_METHOD.MINICAP):
         self.adb = ADB(device_id, adb_path, host, port)
+        self._display_info = {}
+        self.tmp_image = Image(adb=self.adb)
         # cap mode
-        self.cap_method = cap_method
+        if cap_method == 'minicap':
+            self.cap_method = CAP_METHOD.MINICAP
+        elif cap_method == 'javacap':
+            self.cap_method = CAP_METHOD.JAVACAP
+        else:
+            self.cap_method = CAP_METHOD.ADBCAP
         self.minicap = Minicap(self.adb)
         self.javacap = Javacap(self.adb)
         # touch mode
-        self.touch_method = touch_method
+        if touch_method == 'minitouch':
+            self.touch_method = TOUCH_METHOD.MINITOUCH
+        else:
+            self.touch_method = TOUCH_METHOD.ADBTOUCH
+
         self.minitouch = Minitouch(self.adb)
         self.adbtouch = ADBTOUCH(self.adb)
-        self.tmp_image = Image(self.adb)
+        # matching mode
+        self.sift = SIFT()
 
     def screenshot(self):
         stamp = time.time()
+        img_data = None
         if self.cap_method == CAP_METHOD.MINICAP:
-            img_data, socket_time = self.minicap.get_frame()
+            img_data = self.minicap.get_frame()
         elif self.cap_method == CAP_METHOD.JAVACAP:
             img_data = self.javacap.get_frame_from_stream()
         elif self.cap_method == CAP_METHOD.ADBCAP:
@@ -66,15 +79,21 @@ class Android(object):
 
     def click(self, x: int, y: int, index: int = 0, duration: int = 20):
         if self.touch_method == TOUCH_METHOD.MINITOUCH:
+            logger.info('[minitouch]index={}, x={}, y={}', index, x, y)
             return self.minitouch.click(x, y, index=index, duration=duration)
         elif self.touch_method == TOUCH_METHOD.ADBTOUCH:
+            logger.info('[adbTouch]index={}, x={}, y={}', index, x, y)
             return self.adbtouch.click(x, y, index=index, duration=duration)
 
-    def get_cap_path(self):
-        """获取当前截图路径"""
-        return self.tmp_image.path
+    def display_info(self):
+        if not self._display_info:
+            self._display_info = self.get_display_info()
 
-
-class _system(Android):
-    def screen_on(self):
-        pass
+    def get_display_info(self):
+        if self.cap_method == CAP_METHOD.MINICAP:
+            try:
+                return self.minicap.get_display_info()
+            except RuntimeError:
+                # Even if minicap execution fails, use adb instead
+                return self.adb.get_display_info()
+        return self.adb.get_display_info()

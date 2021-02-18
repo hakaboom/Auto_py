@@ -6,6 +6,7 @@ import time
 import numpy as np
 from coordinate import Rect
 from core.cv.base_image import check_detection_input
+from core.cv.utils import generate_result
 
 
 def cal_rgb_confidence(img_src_rgb, img_sch_rgb):
@@ -29,6 +30,7 @@ def find_template(im_source, im_search, threshold: int = 0.85, mode=cv2.TM_CCOEF
     :param mode: 识别模式
     :return: None or Rect
     """
+    start = time.time()
     im_source, im_search = check_detection_input(im_source, im_search)
     # 模板匹配取得res矩阵
     res = cv2.matchTemplate(im_source, im_search, mode)
@@ -44,15 +46,25 @@ def find_template(im_source, im_search, threshold: int = 0.85, mode=cv2.TM_CCOEF
     # 求取位置
     x, y = max_loc
     rect = Rect(x=x, y=y, width=w, height=h)
-    print('{Rect}, confidence={confidence}'.format(confidence=confidence, Rect=rect))
-    return rect
+    print('[tpl]{Rect}, confidence={confidence}, time={time:.2f}'.format(confidence=confidence, Rect=rect,
+                                                                time=(time.time() - start)*1000))
+    return generate_result(rect, confidence)
 
 
 def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEFF_NORMED, max_count=10):
+    """
+    模板匹配
+    :param im_source: 待匹配图像
+    :param im_search: 待匹配模板
+    :param threshold: 匹配度
+    :param mode: 识别模式
+    :param max_count: 最多匹配数量
+    :return: None or Rect
+    """
+    start = time.time()
     im_source, im_search = check_detection_input(im_source, im_search)
     # 模板匹配取得res矩阵
     res = cv2.matchTemplate(im_source, im_search, mode)
-
     result = []
     h, w = im_search.shape[:2]
 
@@ -65,23 +77,12 @@ def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEF
             break
         x, y = max_loc
         rect = Rect(x=x, y=y, width=w, height=h)
-        result.append(rect)
+        result.append(generate_result(rect, confidence))
         # 屏蔽最优结
         cv2.rectangle(res, (int(max_loc[0] - 1), int(max_loc[1] - 1)),
                       (int(max_loc[0] + 1), int(max_loc[1] + 1)), (0, 0, 0), -1)
+    if result:
+        print('[tpls] find counts:{counts}, time={time:.2f}{result}'.format(counts=len(result),
+                                                                            time=(time.time() - start)*1000,
+              result=''.join(['\n\t{}, confidence={}'.format(x['rect'], x['confidence']) for x in result])))
     return result if result else None
-
-
-if __name__ == '__main__':
-    def cv_imread(file_path):
-        return cv2.imdecode(np.fromfile(file_path, dtype=np.uint8), -1)
-
-    im_source = cv_imread('./tmp/主界面1.png')
-    im_search = cv_imread('./tmp/编队.png')
-    h, w, _ = im_search.shape
-    h, w = int(h * (540 / 1080)), int(w * (540 / 1080))
-    im_search = cv2.resize(im_search, (w, h), interpolation=cv2.INTER_LANCZOS4)
-
-    request = find_template(im_search=im_search, im_source=im_source)
-    print(request)
-    cv2.waitKey(0)

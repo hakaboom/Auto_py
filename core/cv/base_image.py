@@ -4,16 +4,16 @@ import cv2
 import time
 from coordinate import Rect, Size
 from core.constant import ADB_CAP_REMOTE_PATH
+from core.utils.base import auto_increment
 from core.cv.utils import read_image, bgr_2_gray, bytes_2_img
 from core.cv.thresholding import otsu
-from core.utils.base import auto_increment
 import numpy as np
 from loguru import logger
 
 
 class _image(object):
     def __init__(self, img=None, flags=cv2.IMREAD_COLOR, adb=None):
-        self.tmp_path = adb and ADB_CAP_REMOTE_PATH.format(adb.get_device_id().replace(':', '_')) or './tmp/'
+        self.tmp_path = adb and ADB_CAP_REMOTE_PATH.format(adb.get_device_id(decode=True)) or './tmp/'
         self.image_data = None
         if img is not None:
             self.imwrite(img, flags)
