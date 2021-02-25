@@ -12,17 +12,17 @@ from loguru import logger
 
 
 class _image(object):
-    def __init__(self, img=None, flags=cv2.IMREAD_COLOR, adb=None):
-        self.tmp_path = adb and ADB_CAP_REMOTE_PATH.format(adb.get_device_id(decode=True)) or './tmp/'
+    def __init__(self, img=None, flags=cv2.IMREAD_COLOR, path=''):
+        # 修改掉
+        self.tmp_path = path
         self.image_data = None
         if img is not None:
             self.imwrite(img, flags)
 
-    def save_2_path(self, path=None):
+    def save2path(self, path=None):
         if self.imread() is None:
             raise ValueError('没有缓存图片')
         path = path or self.path
-        print(path)
         cv2.imwrite(path, self.imread())
 
     def imwrite(self, img, flags: int = cv2.IMREAD_COLOR):

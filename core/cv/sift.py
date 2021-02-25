@@ -228,3 +228,13 @@ class SIFT(object):
         for npt in pts.astype(int).tolist():
             pypts.append(tuple(npt[0]))
         return Rect(x=x_min, y=y_min, width=(x_max - x_min), height=(y_max - y_min))
+
+
+if __name__ == '__main__':
+    from core.cv.base_image import image
+    from core.cv.sift import SIFT
+    sift = SIFT()
+    im_search = image('star.png')
+    img = image('test1.png')
+    a = sift.find_sift(im_search=im_search, im_source=img)
+    print(a)

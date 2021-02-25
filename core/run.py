@@ -10,6 +10,7 @@ from core.Javecap import Javacap
 from core.utils.base import initLogger
 from core.cv.base_image import image as Image
 from core.cv.sift import SIFT
+from core.constant import ADB_CAP_REMOTE_PATH
 from core.cv.match_template import find_template, find_templates
 from loguru import logger
 
@@ -23,7 +24,7 @@ class Android(object):
                  cap_method: str = CAP_METHOD.MINICAP):
         self.adb = ADB(device_id, adb_path, host, port)
         self._display_info = {}
-        self.tmp_image = Image(adb=self.adb)
+        self.tmp_image = Image(path=ADB_CAP_REMOTE_PATH.format(self.adb.get_device_id(decode=True)))
         # cap mode
         if cap_method == 'minicap':
             self.cap_method = CAP_METHOD.MINICAP
