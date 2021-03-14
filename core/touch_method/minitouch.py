@@ -4,40 +4,11 @@ import socket
 import time
 import math
 from typing import Tuple
-
 from loguru import logger
-
 from core.adb import ADB
 from core.constant import (TEMP_HOME, MNT_HOME, MNT_LOCAL_NAME, MNT_INSTALL_PATH)
 from core.utils.snippet import str2byte
-
-
-class transform(object):
-    """通过minitouch的max_x,max_y与屏幕适配"""
-    def __init__(self, display_info: dict, max_x: int = 0, max_y: int = 0, orientation: int = 1, screen_size: dict = None):
-        self.orientation = orientation
-        self.display_info = display_info
-        self.event_size = dict(width=display_info['max_x'], height=display_info['max_y'])
-        self.screen_size = dict(width=display_info['width'], height=display_info['height'])
-        self.event_scale = self.event2windows()
-
-    def event2windows(self):
-        return {
-            'width': self.screen_size['width'] / self.event_size['width'],
-            'height': self.screen_size['height'] / self.event_size['height']
-        }
-
-    def right2right(self, x, y):
-        return round(x / self.event_scale['width']), \
-               round(y / self.event_scale['height'])
-
-    def portrait2right(self, x, y):
-        return round((x / self.screen_size['height'] * self.screen_size['width']) / self.event_scale['width']), \
-               round((y / self.screen_size['width'] * self.screen_size['height'] / self.event_scale['height']))
-
-    def left2right(self, x, y):
-        return round((1 - x / self.screen_size['height']) * self.screen_size['width'] / self.event_scale['height']), \
-               round((1 - y / self.screen_size['width']) * self.screen_size['height'] / self.event_scale['height'])
+from .base import transform
 
 
 class _Minitouch(transform):
@@ -123,15 +94,6 @@ class _Minitouch(transform):
         byte_connect = str2byte(content)
         self.client.sendall(byte_connect)
         return self.client.recv(0)
-
-    def transform(self, x, y):
-        print(x, y)
-        if self.display_info['orientation'] == 0:
-            return self.right2right(x, y)
-        elif self.display_info['orientation'] == 1:
-            return self.left2right(x, y)
-        elif self.display_info['orientation'] == 2:
-            return self.portrait2right(x, y)
 
 
 class Minitouch(_Minitouch):

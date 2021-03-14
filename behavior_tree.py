@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from inspect import isfunction
-from core.utils.base import get_varible_name
+from core.utils.base import get_varible_name, pprint
 import time
 import sys
 
@@ -128,13 +128,11 @@ class Sequence(object):
         self.maxTime = -1
         self.loopIntervalTime = 0
         self.loopEndTrigger = Trigger(blackboard)
-        self.scenes_tree = []
 
     def add_scene(self, *args):
         for scene in args:
             if isinstance(scene, Scene):
-                self.scenes_tree.append(dict(name=get_varible_name(scene), scene=scene))
-                self.scenes.append(scene)
+                self.scenes.append(dict(name=get_varible_name(scene), scene=scene))
             else:
                 raise ValueError('{} is not Scene, tuple index={}'.format(scene, args.index(scene)))
 
@@ -154,6 +152,10 @@ class Sequence(object):
         self.maxTime = LoopTime
         self.loopIntervalTime = IntervalTime
 
+    def getLoop(self):
+        return dict(isLoop=self.isLoop, maxCount=self.maxCount,
+                    maxTime=self.maxTime, loopIntervalTime=self.loopIntervalTime)
+
     def run(self):
         flag = False
         loopTime = time.time()
@@ -163,7 +165,7 @@ class Sequence(object):
                 loopTime = time.time()
                 loopCount = 0
             for v in self.scenes:
-                flag = v.run()
+                flag = v['scene'].run()
                 if flag:
                     break
             if self.loopEndTrigger.check():
@@ -181,11 +183,25 @@ class Sequence(object):
     def get_scene_tree(self):
         """通过遍历Sequence 获取当前节点下的子节点信息"""
         tree = []
-        for main_scenes in self.scenes_tree:
+        main_sequence_name = get_varible_name(self)
+        for main_scenes in self.scenes:
             v = None
             if isinstance(main_scenes['scene'].child, Sequence):
-                v = main_scenes['scene'].child.get_scene_tree()
+                v = (main_scenes['name'], main_scenes['scene'].child.get_scene_tree())
             else:
                 v = main_scenes['name']
             tree.append(v)
         return tree
+
+    def print_scene_tree(self):
+        tree = []
+        for child in self.get_scene_tree():
+            print(child)
+            if isinstance(child, tuple):
+                s = '{name}({type})={value}'.format(type='Sequence',value=child[1], name=child[0])
+            else:
+                s = '{type}={name}'.format(type='scene', name=child)
+            tree.append(s)
+        print(tree)
+        # for value in tree:
+        #     print(value)

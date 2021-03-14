@@ -5,17 +5,18 @@ import math
 import time
 from core.adb import ADB
 from loguru import logger
+from .base import transform
 
 
-class Touch_event(object):
-    def __init__(self, event_path: str, event_size: dict, display_info: dict):
+class Touch_event(transform):
+    def __init__(self, event_size: dict, display_info: dict):
+        super(Touch_event, self).__init__(display_info)
         self.event_id = 1
         self.index_count = 0
         self.index = [False, False, False, False, False, False, False, False, False, False, False]
-        self.event_path = event_path
         self.event_size = event_size
         self.display_info = display_info
-        self.event_scale = self.event_size2windows()
+        self.event_scale = self.event2windows()
 
     def add_event_id(self):
         self.event_id += 1
@@ -30,69 +31,52 @@ class Touch_event(object):
         self.index[index] = False
         self.index_count -= 1
 
-    def event_size2windows(self):
-        return {
-            'width': self.display_info['width'] / self.event_size['width'],
-            'height': self.display_info['height'] / self.event_size['height']
-        }
-
-    def transform(self, x, y):
-        if self.display_info['orientation'] == 0:
-            return self.right2right(x, y)
-        elif self.display_info['orientation'] == 1:
-            return self.left2right(x, y)
-        elif self.display_info['orientation'] == 2:
-            return self.portrait2right(x, y)
-
-    def right2right(self, x, y):
-        return x / self.event_scale['width'], y / self.event_scale['height']
-
-    def portrait2right(self, x, y):
-        return (x / self.display_info['height'] * self.display_info['width']) / self.event_scale['width'], (
-                y / self.display_info['width'] * self.display_info['height'] / self.event_scale['height'])
-
-    def left2right(self, x, y):
-        return (1 - x / self.display_info['height']) * self.display_info['width'] / self.event_scale['height'], (
-                1 - y / self.display_info['width']) * self.display_info['height'] / self.event_scale['height']
-
 
 class Touch(object):
     """
-        基本触摸函数,通过adb操作
+        通过setevent操作,需要root权限,可以多点触控
         函数内时间单位为ms,间隔最好不要低于50ms
-        使用setevent
     """
 
     def __init__(self, adb: ADB):
         self.adb = adb
-        path, name, width, height = self._get_event()
+        path, width, height = self._get_event()
         self.event_path = path
-        self.event_name = name
         self.event_size = {'width': width, 'height': height}
         self.display_info = self.adb.get_display_info()
-        self.Touch_event = Touch_event(event_path=self.event_path, event_size=self.event_size,
+        self.Touch_event = Touch_event(event_size=self.event_size,
                                        display_info=self.display_info)
-        logger.info('adb_touch init, event_path:{}'.format(path))
 
     def _get_event(self):
-        """获取包含0035,0036的event文件"""
+        """获取触摸的event文件"""
         devices = self.adb.raw_shell(['getevent', '-p'])
         # 按照add device拆分
-        patter = re.compile(r'add device.+:(.+?)\s+name:\s+\"(.+?)\"\s+[\s\S]{1,9999}0035.+:(.+?)\n.+0036.+:(.+?)\n')
-        b = patter.findall(devices)
-        if not b:
+        patter = re.compile(r'add device [\s\S]+?input props:')
+        devices = [*patter.findall(devices)]
+        # 找到含有ABS (0003)的devices
+        patter = re.compile('ABS \(0003\): ')
+        device = ''
+        for k, v in enumerate(devices):
+            if patter.findall(v):
+                device = devices[k]
+                continue
+        if not device:
             raise ValueError("input event not found\n{}".format(devices))
-        path, name, width, height = b[0]
+        # 获取path
+        patter = re.compile('add device.+:(.+?)\s')
+        path = patter.findall(device)[0].strip()
+        # 获取0035 0036
+        patter = re.compile('0035.+:(.+?)\n.+0036.+:(.+?)\n')
+        width, height = patter.findall(device)[0]
         patter = re.compile(r'[\s\S]+?max (.+?),')
         width = int(patter.findall(width)[0])
         height = int(patter.findall(height)[0])
-        if width < height:
-            width, height = height, width
-        return path, name, width, height
+        logger.info('get event path:{}, eventSize(width={},height={})', path, width, height)
+        return path, width, height
 
     def _build_down(self,  x: int, y: int, index: int = 1):
         x, y = self.Touch_event.transform(x, y)
-        eventPath = self.Touch_event.event_path
+        eventPath = self.event_path
         event_id = self.Touch_event.event_id
         self.Touch_event.add_event_id()
         self.Touch_event.index_down(index)
@@ -109,7 +93,7 @@ class Touch(object):
 
     def _build_up(self, x: int, y: int, index: int = 1):
         x, y = self.Touch_event.transform(x, y)
-        eventPath = self.Touch_event.event_path
+        eventPath = self.event_path
         index_count = self.Touch_event.index_count
         self.Touch_event.index_up(index)
         if index_count > 1:
