@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 import re
-import socket
+import sys
 import time
-import math
+import socket
 from typing import Tuple
 from loguru import logger
 from core.adb import ADB
 from core.constant import (TEMP_HOME, MNT_HOME, MNT_LOCAL_NAME, MNT_INSTALL_PATH)
-from core.utils.snippet import str2byte
+from core.utils.nbsp import NonBlockingStreamReader
+from core.utils.safesocket import SafeSocket
+from core.utils.snippet import str2byte, get_std_encoding
 from .base import transform
 
 
@@ -24,12 +26,10 @@ class _Minitouch(transform):
         self.adb = adb
         self.HOME = TEMP_HOME
         self.MNT_HOME = MNT_HOME
-        self.MNT_PORT = 0
+        self.MNT_PORT = None
         self.MNT_LOCAL_NAME = MNT_LOCAL_NAME.format(self.adb.get_device_id())
-        self._abi_version = self.adb.abi_version()
-        self.max_x, self.max_y = 0, 0
-        self.set_minitouch_port()
-        self.start_minitouch_server()
+        self.max_x, self.max_y = None, None
+        self.start_server()
         super(_Minitouch, self).__init__(display_info=self._get_display_info())
         logger.info('minitouch init, port:{} name:{}, max_x={}, max_y={}', self.MNT_PORT, self.MNT_LOCAL_NAME,
                     self.max_x, self.max_y)
@@ -44,12 +44,17 @@ class _Minitouch(transform):
 
     def _push_target_mnt(self):
         """ push specific minitouch """
-        mnt_path = MNT_INSTALL_PATH.format(self._abi_version)
+        mnt_path = MNT_INSTALL_PATH.format(self.adb.abi_version())
         # push and grant
         self.adb.push(mnt_path, self.MNT_HOME)
         time.sleep(1)
-        self.adb.start_shell(['chmod', '777', self.MNT_HOME])
+        self.adb.start_shell(['chmod', '755', self.MNT_HOME])
         logger.info('minicap installed in {}', self.MNT_HOME)
+
+    def start_server(self):
+        self.set_minitouch_port()
+        self.setup_server()
+        self.setup_client()
 
     def set_minitouch_port(self):
         """
@@ -62,27 +67,61 @@ class _Minitouch(transform):
         if not self.MNT_PORT:
             raise logger.error('minicap port not set: local_name{}', self.MNT_LOCAL_NAME)
 
-    def start_minitouch_server(self):
+    def setup_server(self):
         # 如果之前服务在运行,则销毁
         self.adb.kill_process(name=MNT_HOME)
-        time.sleep(1)
-        self.adb.start_shell("{path} -n '{name}'".format(path=self.MNT_HOME, name=self.MNT_LOCAL_NAME))
-        time.sleep(1)
+        p = self.adb.start_shell("{path} -n '{name}' 2>&1".format(path=self.MNT_HOME, name=self.MNT_LOCAL_NAME))
 
-        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client.connect(('127.0.0.1', self.MNT_PORT))
+        nbsp = NonBlockingStreamReader(p.stdout, name='minitouch_server')
+        while True:
+            line = nbsp.readline(timeout=5.0)
+            if line is None:
+                raise RuntimeError("minitouch setup timeout")
 
-        # get minitouch server info
-        socket_out = client.makefile()
-        # v <version>
-        # protocol version, usually it is 1. needn't use this
-        version = re.findall(r'(\d+)', socket_out.readline())
-        # ^ <max-contacts> <max-x> <max-y> <max-pressure>
-        max_contacts, max_x, max_y, max_pressure = re.findall(r'(\d+)', socket_out.readline())
-        self.max_x, self.max_y = int(max_x), int(max_y)
-        # $ <pid>
-        pid = re.findall(r'(\d+)', socket_out.readline())
-        self.client = client
+            line = line.decode(get_std_encoding(sys.stdout))
+
+            # 识别出setup成功的log, 并匹配出max_x, max_y
+            m = re.search("Type \w touch device .+ \((\d+)x(\d+) with \d+ contacts\) detected on .+ \(.+\)", line)
+            if m:
+                self.max_x, self.max_y = int(m.group(1)), int(m.group(2))
+                break
+            else:
+                self.max_x = 32768
+                self.max_y = 32768
+
+        if p.poll() is not None:
+            raise RuntimeError("minitouch server quit immediately")
+
+        # s = SafeSocket()
+        # s.connect((self.adb.host, self.MNT_PORT))
+        #
+        # # get minitouch server info
+        # socket_out = s.makefile()
+        # # v <version>
+        # # protocol version, usually it is 1. needn't use this
+        # version = re.findall(r'(\d+)', socket_out.readline())
+        # # ^ <max-contacts> <max-x> <max-y> <max-pressure>
+        # max_contacts, max_x, max_y, max_pressure = re.findall(r'(\d+)', socket_out.readline())
+        # self.max_x, self.max_y = int(max_x), int(max_y)
+        # # $ <pid>
+        # pid = re.findall(r'(\d+)', socket_out.readline())
+        # self.client = s
+
+    def setup_client(self):
+        s = SafeSocket()
+        s.connect((self.adb.host, self.MNT_PORT))
+        s.sock.settimeout(2)
+        header = b""
+        while True:
+            try:
+                header += s.sock.recv(4096)
+            except socket.timeout:
+                logger.warning("minitouch header not recved")
+                break
+            if header.count(b'\n') >=3:
+                break
+        logger.debug("minitouch header:{}", repr(header))
+        self.client = s
 
     def _is_mnt_install(self):
         if not self.adb.check_file(self.HOME, 'minitouch'):
@@ -92,7 +131,7 @@ class _Minitouch(transform):
 
     def send(self, content: str):
         byte_connect = str2byte(content)
-        self.client.sendall(byte_connect)
+        self.client.send(byte_connect)
         return self.client.recv(0)
 
 
@@ -146,8 +185,8 @@ class Minitouch(_Minitouch):
         :return:
             None
         """
-        start_x, start_y = self.transform(start)
-        end_x, end_y =  self.transform(end)
+        start_x, start_y = self.transform(start[0], start[1])
+        end_x, end_y = self.transform(end[0], end[1])
         if start_x > self.max_x or start_y > self.max_y:
             raise OverflowError('start坐标不能大于max值, x={},y={},max_x={},max_y={}'.
                                 format(start_x, start_y, self.max_x, self.max_y))

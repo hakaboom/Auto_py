@@ -5,9 +5,10 @@ from core.adb import ADB
 from core.minicap import Minicap
 from core.touch_method.event_touch import Touch as EVENTTOUCH
 from core.touch_method.minitouch import Minitouch
-from core.constant import TOUCH_METHOD, CAP_METHOD
+from core.touch_method.maxtouch import Maxtouch
+from core.constant import TOUCH_METHOD, CAP_METHOD, SDK_VERISON_ANDROID10
 from core.Javecap import Javacap
-from core.utils.base import initLogger
+from core.utils.base import initLogger, pprint
 from core.cv.base_image import image as Image
 from core.cv.sift import SIFT
 from core.constant import ADB_CAP_REMOTE_PATH
@@ -21,25 +22,21 @@ class Android(object):
     def __init__(self, device_id=None, adb_path=None, host='127.0.0.1', port=5037,
                  touch_method: str = TOUCH_METHOD.MINITOUCH,
                  cap_method: str = CAP_METHOD.MINICAP):
+        # init adb
         self.adb = ADB(device_id, adb_path, host, port)
         self._display_info = {}
         self.tmp_image = Image(path=ADB_CAP_REMOTE_PATH.format(self.adb.get_device_id(decode=True)))
-        # cap mode
-        if cap_method == 'minicap':
-            self.cap_method = CAP_METHOD.MINICAP
-        elif cap_method == 'javacap':
-            self.cap_method = CAP_METHOD.JAVACAP
+        self.sdk_version = self.adb.sdk_version()
+        # init components
+        self.cap_method = cap_method
+        self.touch_method = touch_method
+        if self.sdk_version >= SDK_VERISON_ANDROID10 and self.touch_method == TOUCH_METHOD.MINITOUCH:
+            self.touch_method = TOUCH_METHOD.MAXTOUCH
         else:
-            self.cap_method = CAP_METHOD.ADBCAP
+            self.minitouch = Minitouch(self.adb)
         self.minicap = Minicap(self.adb)
         self.javacap = Javacap(self.adb)
-        # touch mode
-        if touch_method == 'minitouch':
-            self.touch_method = TOUCH_METHOD.MINITOUCH
-        else:
-            self.touch_method = TOUCH_METHOD.ADBTOUCH
-
-        self.minitouch = Minitouch(self.adb)
+        self.maxtouch = Maxtouch(self.adb)
         self.EVENTTOUCH = EVENTTOUCH(self.adb)
         # matching mode
         self.sift = SIFT()
@@ -78,11 +75,12 @@ class Android(object):
             return self.EVENTTOUCH.sleep(duration)
 
     def click(self, x: int, y: int, index: int = 0, duration: int = 20):
+        logger.info("[{}]index={}, x={}, y={}", self.touch_method, index, x, y)
         if self.touch_method == TOUCH_METHOD.MINITOUCH:
-            logger.info('[minitouch]index={}, x={}, y={}', index, x, y)
             return self.minitouch.click(x, y, index=index, duration=duration)
+        elif self.touch_method == TOUCH_METHOD.MAXTOUCH:
+            return self.maxtouch.click(x, y, index=index, duration=duration)
         elif self.touch_method == TOUCH_METHOD.ADBTOUCH:
-            logger.info('[adbTouch]index={}, x={}, y={}', index, x, y)
             return self.EVENTTOUCH.click(x, y, index=index, duration=duration)
 
     def display_info(self):

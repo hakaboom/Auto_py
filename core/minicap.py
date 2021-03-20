@@ -62,7 +62,7 @@ class _Minicap(object):
         self.MNC_PORT = self.adb.get_forward_port(self.MNC_LOCAL_NAME)
         if not self.MNC_PORT:
             raise logger.error('minicap port not set: local_name{}', self.MNC_LOCAL_NAME)
-        logger.info("'{}' start in port:{}", self.MNC_LOCAL_NAME, self.MNC_PORT)
+        logger.info("minicap start in port:{}", self.MNC_PORT)
 
     def push_target_mnc(self):
         """ push specific minicap """
@@ -70,7 +70,7 @@ class _Minicap(object):
         # push and grant
         self.adb.push(mnc_path, self.MNC_HOME)
         time.sleep(1)
-        self.adb.start_shell(['chmod', '777', self.MNC_HOME])
+        self.adb.start_shell(['chmod', '755', self.MNC_HOME])
         logger.info('minicap installed in {}', self.MNC_HOME)
 
     def push_target_mnc_so(self):
@@ -79,7 +79,7 @@ class _Minicap(object):
         # push and grant
         self.adb.push(mnc_so_path, self.MNC_SO_HOME)
         time.sleep(1)
-        self.adb.start_shell(['chmod', '777', self.MNC_SO_HOME])
+        self.adb.start_shell(['chmod', '755', self.MNC_SO_HOME])
         logger.info('minicap.so installed in {}', self.MNC_SO_HOME)
 
     def _is_mnc_install(self):
@@ -95,7 +95,7 @@ class _Minicap(object):
         if not self.adb.check_file(self.HOME, 'minicap.so'):
             logger.error('{} minicap.so is not install in {}', self.adb.device_id, self.adb.get_device_id())
             self.push_target_mnc_so()
-        logger.info('{} minicap and minicap.so is install', self.adb.device_id, )
+        logger.info('{} minicap and minicap.so is install', self.adb.device_id)
 
     def get_display_info(self):
         """
@@ -150,7 +150,7 @@ class Minicap(_Minicap):
             'quirks': 0
         }
         s = SafeSocket()
-        s.connect(('127.0.0.1', self.MNC_PORT))
+        s.connect((self.adb.host, self.MNC_PORT))
         while True:
             chunk = s.recv(12000)
             if len(chunk) == 0:

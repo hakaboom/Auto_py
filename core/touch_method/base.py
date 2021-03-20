@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+from core.utils.base import pprint
+
+
 class transform(object):
     def __init__(self, display_info):
         self.display_info = display_info

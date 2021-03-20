@@ -42,7 +42,7 @@ class _ADB(object):
         self._cap_raw_remote_path = ADB_CAP_REMOTE_RAW_PATH.format(self._cap_name)
         # 已经使用的端口
         self._forward_local_using = self.get_forwards()
-        self._sdk_version = int(self.sdk_version())
+        self._sdk_version = self.sdk_version()
 
     @staticmethod
     def builtin_adb_path() -> str:
@@ -371,7 +371,7 @@ class _ADB(object):
         """ get sdk version """
         sdk = self.raw_shell(['getprop', 'ro.build.version.sdk']).rstrip()
         logger.info('device {} sdk is {}'.format(self.device_id, sdk).rstrip('\r\n'))
-        return sdk
+        return int(sdk)
 
     def check_file(self, path: str, name: str) -> bool:
         """

@@ -11,6 +11,7 @@ DEFAULT_ADB_PATH = {  # adb.exe路径
     "Linux-x86_64": os.path.join(STATICPATH, "adb", "linux", "adb"),
     "Linux-armv7l": os.path.join(STATICPATH, "adb", "linux_arm", "adb"),
 }
+SDK_VERISON_ANDROID10 = 29
 SHELL_ENCODING = 'utf-8'  # adb shell的编码
 ADB_CAP_NAME_RAW = '{}.raw'  # 使用ADB截图时生成raw的文件名
 ADB_CAP_REMOTE_PATH = './tmp/{}.png'  # 使用ADB截图时png保存到电脑的路径
@@ -33,6 +34,11 @@ MNT_HOME = '/data/local/tmp/minitouch'  # minitouch文件在手机上的路径
 MNT_LOCAL_NAME = 'minitouch_{}'  # device_id  minitouch开发的端口名字
 MNT_INSTALL_PATH = "./static/stf_libs/{}/minitouch"  # abi_version minitouch安装文件路径
 
+# maxtouch
+MAX_HOME = '/data/local/tmp/maxpresent.jar'  # maxtouch文件在手机上的路径
+MAX_INSTALL_PATH = "./static/apks/maxpresent.jar"  # maxtouch的安装路径
+MAX_LOCAL_NAME = 'maxtouch_{}' #maxtouch开放的端口名字
+
 # yosemite
 YOSEMITE_APK = os.path.join(STATICPATH, "apks", "Yosemite.apk")
 YOSEMITE_PACKAGE = 'com.netease.nie.yosemite'
@@ -42,15 +48,17 @@ YOSEMITE_IME_SERVICE = 'com.netease.nie.yosemite/.ime.ImeService'
 JAC_LOCAL_NAME = 'javacap_{}'
 JAC_CAP_PATH = 'tmp_{}.png'
 
+
 class TOUCH_METHOD(object):
-    MINITOUCH = "MINITOUCH"
-    ADBTOUCH = "ADBTOUCH"
+    MINITOUCH = "minitouch"
+    ADBTOUCH = "eventtouch"
+    MAXTOUCH = "maxtouch"
 
 
 class CAP_METHOD(object):
-    MINICAP = "MINICAP"
-    JAVACAP = 'JAVACAP'
-    ADBCAP = "ADBCAP"
+    MINICAP = "minicap"
+    JAVACAP = 'javacap'
+    ADBCAP = "adbcap"
 
 
 # logger filter_level
@@ -59,5 +67,5 @@ def filter_level(record):
     需要过滤的等级
     'DEBUG' 'INFO' 'SUCCESS' 'WARNING' 'ERROR'
     """
-    level = ['DEBUG']
+    level = []
     return record["level"].name not in level
