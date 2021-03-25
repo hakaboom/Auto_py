@@ -9,14 +9,12 @@ from .base import transform
 
 
 class Touch_event(transform):
-    def __init__(self, event_size: dict, display_info: dict):
-        super(Touch_event, self).__init__(display_info)
+    def __init__(self, adb, max_x, max_y):
+        super(Touch_event, self).__init__(adb)
         self.event_id = 1
         self.index_count = 0
         self.index = [False, False, False, False, False, False, False, False, False, False, False]
-        self.event_size = event_size
-        self.display_info = display_info
-        self.event_scale = self.event2windows()
+        self.max_x, self.max_y = max_x, max_y
 
     def add_event_id(self):
         self.event_id += 1
@@ -31,6 +29,12 @@ class Touch_event(transform):
         self.index[index] = False
         self.index_count -= 1
 
+    def transform_xy(self, x, y):
+        width, height = self.size_info['width'], self.size_info['height']
+        nx = round(x / (width / self.max_x))
+        ny = round(y / (height / self.max_y))
+        return nx, ny
+
 
 class Touch(object):
     """
@@ -40,12 +44,9 @@ class Touch(object):
 
     def __init__(self, adb: ADB):
         self.adb = adb
-        path, width, height = self._get_event()
+        path, max_x, max_y = self._get_event()
         self.event_path = path
-        self.event_size = {'width': width, 'height': height}
-        self.display_info = self.adb.get_display_info()
-        self.Touch_event = Touch_event(event_size=self.event_size,
-                                       display_info=self.display_info)
+        self.Touch_event = Touch_event(adb, max_x, max_y)
 
     def _get_event(self):
         """获取触摸的event文件"""
@@ -75,7 +76,7 @@ class Touch(object):
         return path, width, height
 
     def _build_down(self,  x: int, y: int, index: int = 1):
-        x, y = self.Touch_event.transform(x, y)
+        x, y = self.Touch_event.transform_xy(x, y)
         eventPath = self.event_path
         event_id = self.Touch_event.event_id
         self.Touch_event.add_event_id()
@@ -92,7 +93,7 @@ class Touch(object):
         return '&&'.join(t)
 
     def _build_up(self, x: int, y: int, index: int = 1):
-        x, y = self.Touch_event.transform(x, y)
+        x, y = self.Touch_event.transform_xy(x, y)
         eventPath = self.event_path
         index_count = self.Touch_event.index_count
         self.Touch_event.index_up(index)
@@ -123,7 +124,6 @@ class Touch(object):
         down = self._build_down(x, y, index)
         up = self._build_up(x, y, index)
         self.adb.start_shell('{}&&{}'.format(down, up))
-        logger.info('adb touch point:(x={},y={})', x, y)
 
     def long_click(self, x: int, y: int, index: int = 1, duration: int = 500):
         down = self._build_down(x, y, index)

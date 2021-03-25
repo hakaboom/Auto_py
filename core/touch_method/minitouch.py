@@ -10,19 +10,20 @@ from core.constant import (TEMP_HOME, MNT_HOME, MNT_LOCAL_NAME, MNT_INSTALL_PATH
 from core.utils.nbsp import NonBlockingStreamReader
 from core.utils.safesocket import SafeSocket
 from core.utils.snippet import str2byte, get_std_encoding
+from core.utils.base import pprint
 from .base import transform
 
 
 class _Minitouch(transform):
     """
     minitouch模块
-    由于minitouch中传坐标精确到了小数点后一位,为了可读性,约定传参时坐标为正常坐标如:1920,1080
-    发送坐标时需要乘以10变为19200,10800
     """
+
     def __init__(self, adb: ADB):
         """
         :param adb: adb instance of android device
         """
+        super(_Minitouch, self).__init__(adb)
         self.adb = adb
         self.HOME = TEMP_HOME
         self.MNT_HOME = MNT_HOME
@@ -30,17 +31,8 @@ class _Minitouch(transform):
         self.MNT_LOCAL_NAME = MNT_LOCAL_NAME.format(self.adb.get_device_id())
         self.max_x, self.max_y = None, None
         self.start_server()
-        super(_Minitouch, self).__init__(display_info=self._get_display_info())
         logger.info('minitouch init, port:{} name:{}, max_x={}, max_y={}', self.MNT_PORT, self.MNT_LOCAL_NAME,
                     self.max_x, self.max_y)
-
-    def _get_display_info(self):
-        display_info = self.adb.get_display_info()
-        display_info.update({
-            'max_x': self.max_x,
-            'max_y': self.max_y
-        })
-        return display_info
 
     def _push_target_mnt(self):
         """ push specific minitouch """
@@ -79,7 +71,6 @@ class _Minitouch(transform):
                 raise RuntimeError("minitouch setup timeout")
 
             line = line.decode(get_std_encoding(sys.stdout))
-
             # 识别出setup成功的log, 并匹配出max_x, max_y
             m = re.search("Type \w touch device .+ \((\d+)x(\d+) with \d+ contacts\) detected on .+ \(.+\)", line)
             if m:
@@ -118,7 +109,7 @@ class _Minitouch(transform):
             except socket.timeout:
                 logger.warning("minitouch header not recved")
                 break
-            if header.count(b'\n') >=3:
+            if header.count(b'\n') >= 3:
                 break
         logger.debug("minitouch header:{}", repr(header))
         self.client = s
@@ -127,15 +118,24 @@ class _Minitouch(transform):
         if not self.adb.check_file(self.HOME, 'minitouch'):
             logger.error('{} minitouch is not install in {}', self.adb.device_id, self.adb.get_device_id())
             self._push_target_mnt()
-        logger.info('{} minitouch is install', self.adb.device_id,)
+        logger.info('{} minitouch is install', self.adb.device_id, )
 
     def send(self, content: str):
         byte_connect = str2byte(content)
         self.client.send(byte_connect)
+        print(byte_connect)
         return self.client.recv(0)
 
 
 class Minitouch(_Minitouch):
+    def transform_xy(self, x, y):
+        width, height = self.size_info['width'], self.size_info['height']
+        nx = float(x) * self.max_x / width
+        ny = float(y) * self.max_y / height
+        if nx > self.max_x or ny > self.max_y:
+            raise OverflowError('坐标不能大于max值, x={},y={},max_x={},max_y={}'.format(nx, ny, self.max_x, self.max_y))
+        return "%.0f" % nx, "%.0f" % ny
+
     def sleep(self, duration: int):
         """
         command: 'w <ms>\n'
@@ -153,9 +153,7 @@ class Minitouch(_Minitouch):
             index: 使用的手指
             pressure: 按压力度
         """
-        x, y = self.transform(x, y)
-        if x > self.max_x or y > self.max_y:
-            raise OverflowError('坐标不能大于max值, x={},y={},max_x={},max_y={}'.format(x, y, self.max_x, self.max_y))
+        x, y = self.transform_xy(x, y)
         s = 'd {} {} {} {}\nc\n'.format(index, x, y, pressure)
         self.send(s)
 
@@ -185,21 +183,14 @@ class Minitouch(_Minitouch):
         :return:
             None
         """
-        start_x, start_y = self.transform(start[0], start[1])
-        end_x, end_y = self.transform(end[0], end[1])
-        if start_x > self.max_x or start_y > self.max_y:
-            raise OverflowError('start坐标不能大于max值, x={},y={},max_x={},max_y={}'.
-                                format(start_x, start_y, self.max_x, self.max_y))
-        if end_x > self.max_x or end_y > self.max_y:
-            raise OverflowError('end坐标不能大于max值, x={},y={},max_x={},max_y={}'.
-                                format(end_x, end_y, self.max_x, self.max_y))
-
-        x, y = 0, 0
+        start_x, start_y = self.transform_xy(start[0], start[1])
+        end_x, end_y = self.transform_xy(end[0], end[1])
+        x, y = None, None
         t = ["d {} {} {} {}\nc\n".format(index, start_x, start_y, pressure)]
         for i in range(spacing, 100, spacing):
-            i = i/100
-            x = round((1-i)*start_x + i*end_x)
-            y = round((1-i)*start_y + i*end_y)
+            i = i / 100
+            x = round((1 - i) * start_x + i * end_x)
+            y = round((1 - i) * start_y + i * end_y)
             t.append("m {} {} {} {}\nc\nw {}\n".format(index, x, y, pressure, duration))
         # 如果没移动完
         if x < end_x or y < end_y:
