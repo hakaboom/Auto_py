@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # https://github.com/AirtestProject/Airtest/blob/master/airtest/core/android/javacap.py
-# 使用网易的yosemite实现
+# 使用airtest的yosemite实现
 import socket
 import struct
 from core.constant import JAC_LOCAL_NAME, JAC_CAP_PATH

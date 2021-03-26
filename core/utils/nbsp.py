@@ -4,6 +4,7 @@ import time
 from threading import Thread, Event
 import queue
 
+
 class NonBlockingStreamReader:
 
     def __init__(self, stream, raise_EOF=False, print_output=True, print_new_line=True, name=None):
