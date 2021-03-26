@@ -8,7 +8,8 @@ import numpy as np
 from core.utils.base import pprint
 from core.run import Android
 #
-device = Android(device_id='192.168.1.224:5555', touch_method='minitouch')
-for i in range(900000):
-    device.click(1280, 720)
+# device = Android(device_id='192.168.1.224:5555', touch_method='minitouch')
+device = Android(device_id='emulator-5554', touch_method='minitouch')
+# for i in range(900000):
+#     device.click(1280, 720)
 # device.click(200, 200)

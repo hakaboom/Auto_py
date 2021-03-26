@@ -9,7 +9,7 @@ class AdbError(Exception):
         This is AdbError BaseError
         When ADB have something wrong
     """
-    def __init__(self, stdout: bytes, stderr: bytes, cmds: list):
+    def __init__(self, stdout, stderr, cmds):
         self.stdout = stdout.decode(get_std_encoding(stdout)).rstrip()
         self.stderr = stderr.decode(get_std_encoding(stderr)).rstrip()
         self.cmds = cmds

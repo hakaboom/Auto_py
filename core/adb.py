@@ -243,7 +243,7 @@ class _ADB(object):
         elif "not found" in stderr:
             return None
         else:
-            raise AdbError(stdout, stderr)
+            raise AdbError(stdout, stderr, ['get-state'])
 
     @property
     def line_breaker(self):
@@ -301,6 +301,12 @@ class _ADB(object):
             else:
                 return out
 
+    def getprop(self, key, strip=True):
+        prop = self.raw_shell(['getprop', key])
+        if strip:
+            prop = prop.rstrip()
+        return prop
+
     def forward(self, local: str, remote: str, no_rebind: bool = True):
         """
         command adb forward
@@ -334,7 +340,7 @@ class _ADB(object):
         port = random.randint(11111, 20000)
         result = False
         try:
-            sock.bind(('127.0.0.1', port))
+            sock.bind((self.host, port))
             result = True
             # logger.debug('port:{} can use'.format(port))
         except socket.error:
@@ -363,13 +369,13 @@ class _ADB(object):
 
     def abi_version(self):
         """ get abi (application binary interface) """
-        abi = self.raw_shell(['getprop', 'ro.product.cpu.abi']).rstrip()
+        abi = self.getprop('ro.product.cpu.abi')
         logger.info('device {} abi is {}'.format(self.device_id, abi).rstrip('\r\n'))
         return abi
 
     def sdk_version(self):
         """ get sdk version """
-        sdk = self.raw_shell(['getprop', 'ro.build.version.sdk']).rstrip()
+        sdk = self.getprop('ro.build.version.sdk')
         logger.info('device {} sdk is {}'.format(self.device_id, sdk).rstrip('\r\n'))
         return int(sdk)
 
@@ -497,18 +503,6 @@ class _ADB(object):
             l.append({'local': local, 'remote': remote})
         return l
 
-    def get_display_info(self):
-        display_info = self.getPhysicalDisplayInfo()
-        orientation = self.getDisplayOrientation()
-        max_x, max_y = self.getMaxXY()
-        display_info.update({
-            "orientation": orientation,
-            "rotation": orientation * 90,
-            "max_x": max_x,
-            "max_y": max_y,
-        })
-        return display_info
-
     def getMaxXY(self):
         ret = self.shell('getevent -p').split('\n')
         max_x, max_y = None, None
@@ -580,6 +574,24 @@ class _ADB(object):
 
         return {}
 
+    def _getDisplayDensity(self, key, strip=True):
+        """
+        Get display density
+        Args:
+            key:
+            strip: strip the output
+        Returns:
+            display density
+        """
+        BASE_DPI = 160.0
+        d = self.getprop('ro.sf.lcd_density', strip)
+        if d:
+            return float(d) / BASE_DPI
+        d = self.getprop('qemu.sf.lcd_density', strip)
+        if d:
+            return float(d) / BASE_DPI
+        return -1.0
+
     def getDisplayOrientation(self):
         """
         Another way to get the display orientation, this works well for older devices (SDK version 15)
@@ -609,10 +621,10 @@ class _ADB(object):
 
 
 class _Device(_ADB):
-
-    def screenshot(self, Rect: Tuple[int, int, int, int] = None):
+    """这里会写上一些常用的功能接口"""
+    def screenshot(self, Rect: Tuple[int, int, int, int]):
         """
-        截图
+        adb 截图
         :param Rect: 顶点坐标x,y。截取长宽width,height
         """
         # 截取临时文件raw
@@ -620,28 +632,28 @@ class _Device(_ADB):
         raw_remote_path = self._cap_raw_remote_path
 
         self.raw_shell(['screencap', local_path])
-        self.start_shell(['chmod', '777', local_path])
+        self.start_shell(['chmod', '755', local_path])
         self.pull(local_path, raw_remote_path)
         # readRaw
         # read size
-        imgData = np.fromfile(raw_remote_path, dtype=np.uint16)
-        width, height = imgData[2], imgData[0]
+        img_data = np.fromfile(raw_remote_path, dtype=np.uint16)
+        width, height = img_data[2], img_data[0]
         # read raw
-        imgData = np.fromfile(raw_remote_path, dtype=np.uint8)
-        imgData = imgData[slice(12, len(imgData))]
+        img_data = np.fromfile(raw_remote_path, dtype=np.uint8)
+        img_data = img_data[slice(12, len(img_data))]
         if Rect:
             if Rect[0] > height or Rect[1] > width or Rect[0] + Rect[2] > height or Rect[1] + Rect[3] > width:
                 raise OverflowError('Rect不能超出屏幕 {}'.format(Rect))
             index = Rect[0] * 4 + Rect[1] * height * 4  # 从图片左上角开始,y计算公式y*height*4,x计算公式x*4, 4表示4通道
             end = (Rect[0] + Rect[2]) * 4 + (Rect[1] + Rect[3] - 1) * height * 4
-            imgData = imgData[index: end]
-            imgData = imgData.reshape(Rect[3], Rect[2], 4)
+            img_data = img_data[index: end]
+            img_data = img_data.reshape(Rect[3], Rect[2], 4)
         else:
-            imgData = imgData.reshape(width, height, 4)
-        imgData = imgData[:, :, ::-1][:, :, 1:4]  # imgData中rgbA转为Abgr,并截取bgr
+            img_data = img_data.reshape(width, height, 4)
+        img_data = img_data[:, :, ::-1][:, :, 1:4]  # imgData中rgbA转为Abgr,并截取bgr
         # 删除raw临时文件
         os.remove(raw_remote_path)
-        return imgData
+        return img_data
 
     def push(self, local, remote):
         """
@@ -750,6 +762,18 @@ class _Device(_ADB):
         package = self.raw_shell(shell).rstrip()
         logger.info("'{}' is running in the foreground", package)
         return package
+
+    def get_display_info(self):
+        display_info = self.getPhysicalDisplayInfo()
+        orientation = self.getDisplayOrientation()
+        max_x, max_y = self.getMaxXY()
+        display_info.update({
+            "orientation": orientation,
+            "rotation": orientation * 90,
+            "max_x": max_x,
+            "max_y": max_y,
+        })
+        return display_info
 
 
 class ADB(_Device):
