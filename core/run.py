@@ -45,15 +45,14 @@ class Android(object):
         stamp = time.time()
         img_data = None
         if self.cap_method == CAP_METHOD.MINICAP:
-            img_data = self.minicap.get_frame()
+            img_data = self.minicap.get_frame_from_stream()
         elif self.cap_method == CAP_METHOD.JAVACAP:
             img_data = self.javacap.get_frame_from_stream()
         elif self.cap_method == CAP_METHOD.ADBCAP:
             img_data = self.adb.screenshot()
         # 图片写入到缓存中
         self.tmp_image.imwrite(img_data)
-        logger.info("screenshot time={:.2f}ms,size=({},{}) path='{}'", (time.time() - stamp)*1000,
-                    *self.tmp_image.shape, self.tmp_image.path)
+        logger.info("screenshot time={:.2f}ms,size=({},{})", (time.time() - stamp)*1000, *self.tmp_image.shape)
         return self.tmp_image
 
     def down(self, x: int, y: int, index: int = 0, pressure: int = 50):
@@ -64,7 +63,7 @@ class Android(object):
 
     def up(self, x: int, y: int, index: int = 0):
         if self.touch_method == TOUCH_METHOD.MINITOUCH:
-            return self.minitouch.up(index=index)
+            return self.minitouch.up(x, y, index)
         elif self.touch_method == TOUCH_METHOD.ADBTOUCH:
             return self.EVENTTOUCH.up(x, y, index)
 

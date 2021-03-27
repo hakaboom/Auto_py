@@ -8,8 +8,10 @@ import numpy as np
 from core.utils.base import pprint
 from core.run import Android
 #
-# device = Android(device_id='192.168.1.224:5555', touch_method='minitouch')
-device = Android(device_id='emulator-5554', touch_method='minitouch')
-# for i in range(900000):
-#     device.click(1280, 720)
-# device.click(200, 200)
+device = Android(device_id='emulator-5554')
+while True:
+    img = device.screenshot().imread()
+    cv2.imshow('capture', img)
+    if cv2.waitKey(25) & 0xFF == ord('q'):
+        cv2.destroyAllWindows()
+        exit(0)

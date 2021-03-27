@@ -622,7 +622,7 @@ class _ADB(object):
 
 class _Device(_ADB):
     """这里会写上一些常用的功能接口"""
-    def screenshot(self, Rect: Tuple[int, int, int, int]):
+    def screenshot(self, Rect: Tuple[int, int, int, int] = None):
         """
         adb 截图
         :param Rect: 顶点坐标x,y。截取长宽width,height

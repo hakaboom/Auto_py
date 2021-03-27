@@ -3,12 +3,13 @@
 import json
 import re
 import time
-
+import struct
 from loguru import logger
 from core.adb import ADB
 from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME,
                            MNC_LOCAL_NAME, MNC_INSTALL_PATH, MNC_SO_INSTALL_PATH)
 from core.utils.safesocket import SafeSocket
+from core.utils.nbsp import NonBlockingStreamReader
 from core.utils.snippet import reg_cleanup
 from typing import Tuple
 
@@ -16,73 +17,40 @@ from typing import Tuple
 class _Minicap(object):
     """minicap模块"""
     RECVTIMEOUT = None
-
-    def __init__(self, adb: ADB):
+    def __init__(self, adb: ADB, projection=None):
         """
         :param adb: adb instance of android device
         """
         self.adb = adb
+        self.projection = projection  # (width, height)
         self.HOME = TEMP_HOME
         self.MNC_HOME = MNC_HOME
         self.MNC_SO_HOME = MNC_SO_HOME
         self.MNC_CMD = MNC_CMD
+        self.MNC_PORT = None
         self.MNC_LOCAL_NAME = MNC_LOCAL_NAME.format(self.adb.get_device_id())
-        self.MNC_PORT = 0
-        self.display_info = None
-        # 因为字符串中有:的话没法保存文件 所以替换字符串中的:
-        # self.MNC_CAP_REMOTE_PATH = MNC_CAP_REMOTE_PATH.format(self.adb.get_device_id().replace(':', '_'))
-        self._abi_version = self.adb.abi_version()
-        self._sdk_version = self.adb.sdk_version()
-        # 开启服务
-        self.start_mnc_server()
-
-    def start_mnc_server(self):
-        """
-        command adb shell {self.MNC_CMD} -P 1920x1080@1920x1080/0 开启minicap服务
-        """
+        self.install()
         self.set_minicap_port()
-        # 如果之前服务在运行,则销毁
-        self.adb.kill_process(name=self.MNC_HOME)
         self.display_info = self.get_display_info()
-        proc = self.adb.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
-                                     '%dx%d@%dx%d/%d 2>&1' % (self.display_info['width'], self.display_info['height'],
-                                                              self.display_info['width'], self.display_info['height'],
-                                                              self.display_info['rotation'])])
-        reg_cleanup(proc.kill)
-        time.sleep(.5)
-        return proc
+        self.quirk_flag = 0
+        self.frame_gen = None
 
     def set_minicap_port(self):
         """
         command forward to minicap
         :return:
         """
-        self._is_mnc_install()
         self.adb.set_forward('localabstract:%s' % self.MNC_LOCAL_NAME)
         self.MNC_PORT = self.adb.get_forward_port(self.MNC_LOCAL_NAME)
         if not self.MNC_PORT:
             raise logger.error('minicap port not set: local_name{}', self.MNC_LOCAL_NAME)
         logger.info("minicap start in port:{}", self.MNC_PORT)
 
-    def push_target_mnc(self):
-        """ push specific minicap """
-        mnc_path = MNC_INSTALL_PATH.format(self._abi_version)
-        # push and grant
-        self.adb.push(mnc_path, self.MNC_HOME)
-        time.sleep(1)
-        self.adb.start_shell(['chmod', '755', self.MNC_HOME])
-        logger.info('minicap installed in {}', self.MNC_HOME)
+    def close_server(self):
+        self.adb.remove_forward(self.MNC_LOCAL_NAME)
+        self.adb.kill_process(name=self.MNC_HOME)
 
-    def push_target_mnc_so(self):
-        """ push specific minicap.so (they should work together) """
-        mnc_so_path = MNC_SO_INSTALL_PATH.format(self._sdk_version, self._abi_version)
-        # push and grant
-        self.adb.push(mnc_so_path, self.MNC_SO_HOME)
-        time.sleep(1)
-        self.adb.start_shell(['chmod', '755', self.MNC_SO_HOME])
-        logger.info('minicap.so installed in {}', self.MNC_SO_HOME)
-
-    def _is_mnc_install(self):
+    def install(self):
         """
         check if minicap and minicap.so installed
 
@@ -91,11 +59,29 @@ class _Minicap(object):
         """
         if not self.adb.check_file(self.HOME, 'minicap'):
             logger.error('{} minicap is not install in {}', self.adb.device_id, self.adb.get_device_id())
-            self.push_target_mnc()
+            self._push_target_mnc()
         if not self.adb.check_file(self.HOME, 'minicap.so'):
             logger.error('{} minicap.so is not install in {}', self.adb.device_id, self.adb.get_device_id())
-            self.push_target_mnc_so()
+            self._push_target_mnc_so()
         logger.info('{} minicap and minicap.so is install', self.adb.device_id)
+
+    def _push_target_mnc(self):
+        """ push specific minicap """
+        mnc_path = MNC_INSTALL_PATH.format(self.adb.abi_version())
+        # push and grant
+        self.adb.push(mnc_path, self.MNC_HOME)
+        time.sleep(1)
+        self.adb.start_shell(['chmod', '755', self.MNC_HOME])
+        logger.info('minicap installed in {}', self.MNC_HOME)
+
+    def _push_target_mnc_so(self):
+        """ push specific minicap.so (they should work together) """
+        mnc_so_path = MNC_SO_INSTALL_PATH.format(self.adb.sdk_version(), self.adb.abi_version())
+        # push and grant
+        self.adb.push(mnc_so_path, self.MNC_SO_HOME)
+        time.sleep(1)
+        self.adb.start_shell(['chmod', '755', self.MNC_SO_HOME])
+        logger.info('minicap.so installed in {}', self.MNC_SO_HOME)
 
     def get_display_info(self):
         """
@@ -109,100 +95,145 @@ class _Minicap(object):
         display_info = match.group(0) if match else display_info
         display_info = json.loads(display_info)
         display_info["orientation"] = display_info["rotation"] / 90
-        # adb获取分辨率
-        wm_size = self.adb.raw_shell(['wm', 'size'])
-        wm_size = re.findall(r'Physical size: (\d+)x(\d+)\r', wm_size)
-        if len(wm_size) > 0:
+        # 针对调整过手机分辨率的情况
+        actual = self.adb.shell("dumpsys window displays")
+        arr = re.findall(r'cur=(\d+)x(\d+)', actual)
+        if len(arr) > 0:
             display_info['physical_width'] = display_info['width']
             display_info['physical_height'] = display_info['height']
-            display_info['width'] = int(wm_size[0][0])
-            display_info['height'] = int(wm_size[0][1])
-        # adb方式获取DPI
-        wm_dpi = self.adb.raw_shell(['wm', 'density'])
-        wm_dpi = re.findall(r'Physical density: (\d+)\r', wm_dpi)
-        if len(wm_dpi) > 0:
-            display_info['dpi'] = int(wm_dpi[0])
-        logger.debug('display_info {}', display_info)
-        # if display_info['height'] > display_info['width']:
-        #     display_info['height'],display_info['width'] = display_info['width'], display_info['height']
+            # 通过 adb shell dumpsys window displays | find "cur="
+            # 获取到的分辨率是实际分辨率，但是需要的是非实际的
+            if display_info["orientation"] in [1, 3]:
+                display_info['width'] = int(arr[0][1])
+                display_info['height'] = int(arr[0][0])
+            else:
+                display_info['width'] = int(arr[0][0])
+                display_info['height'] = int(arr[0][1])
         return display_info
+
+    def _get_stream(self):
+        proc, nbsp = self.start_projection_server()
+        s = SafeSocket()
+        s.connect((self.adb.host, self.MNC_PORT))
+        t = s.recv(24)
+        # minicap header
+        global_headers = struct.unpack("<2B5I2B", t)
+        # Global header binary format https://github.com/openstf/minicap#global-header-binary-format
+        ori, self.quirk_flag = global_headers[-2:]
+
+        if self.quirk_flag & 2 and ori in (1, 3):
+            stopping = True
+            logger.debug("quirk_flag found, going to resetup")
+        else:
+            stopping = False
+        yield stopping
+
+        while not stopping:
+            s.send(b"1")
+            if self.RECVTIMEOUT is not None:
+                header = s.recv_with_timeout(4, self.RECVTIMEOUT)
+            else:
+                header = s.recv(4)
+            if header is None:
+                logger.error("minicap header is None")
+                stopping = yield None
+            else:
+                frame_size = struct.unpack("<I", header)[0]
+                frame_data = s.recv(frame_size)
+                stopping = yield frame_data
+
+        logger.debug('minicap stream ends')
+        s.close()
+        nbsp.kill()
+        proc.kill()
+        self.adb.remove_forward('tcp:{}'.format(self.MNC_PORT))
+        self.adb.close_proc_pipe(proc)
+
+    def get_stream(self):
+        gen = self._get_stream()
+
+        stopped = next(gen)
+        if stopped:
+            try:
+                next(gen)
+            except StopIteration:
+                pass
+            gen = self._get_stream()
+            next(gen)
+        return gen
+
+    def _get_params(self, projection=None):
+        display_info = self.adb.get_display_info()
+        real_width = display_info['width']
+        real_height = display_info['height']
+        real_rotation = display_info['rotation']
+
+        projection = projection or self.projection
+        if projection:
+            proj_width, proj_height = self.zoom_projecion_size()
+        else:
+            proj_width, proj_height = real_width, real_height
+
+        if self.quirk_flag & 2 and real_rotation in (90, 270):
+            params = real_height, real_width, proj_height, proj_width, 0
+        else:
+            params = real_width, real_height, proj_width, proj_height, real_rotation
+
+        return params, display_info
+
+    def zoom_projecion_size(self):
+        display_info = self.adb.get_display_info()
+        real_width = display_info['width']
+        real_height = display_info['height']
+        new_width, new_height = 640, 360
+        if real_width > real_height:
+            new_width, new_height = new_height, new_width
+        if real_width <= new_width and real_height <= new_height:
+            pass
+        if (1.0 * real_width / new_width) > (1.0 * real_height / new_height):
+            scale = 1.0 * real_width / new_height
+        else:
+            scale = 1.0 * real_height / new_height
+        print(real_width, real_height)
+        return int(real_width / scale), int(real_height / scale)
+
+    def start_projection_server(self):
+        """
+        command adb shell {self.MNC_CMD} -P 1920x1080@1920x1080/0 开启minicap服务
+        """
+        params, display_info = self._get_params(True)
+        proc = self.adb.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
+                                     '%dx%d@%dx%d/%d 2>&1' % params])
+        nbsp = NonBlockingStreamReader(proc.stdout, print_output=True, name='minicap_server')
+        while True:
+            line = nbsp.readline(timeout=5.0)
+            if line is None:
+                raise RuntimeError("minicap server setup timeout")
+            if b"Server start" in line:
+                break
+
+        if proc.poll() is not None:
+            raise RuntimeError('minicap server quit immediately')
+
+        reg_cleanup(proc.kill)
+        time.sleep(.5)
+        return proc, nbsp
 
 
 class Minicap(_Minicap):
-    def get_frame(self) -> bytes:
-        """
-        通过socket读取minicap的图片数据,并且通过cv2生成图片,静态页面速度会比adb方法较慢
-        :return:
-             接收到的图片bytes数据
-        """
-        stamp = time.time()
-        readBannerBytes, bannerLength, readFrameBytes = 0, 2, 0
-        frameBodyLengthRemaining, frameBody = 0, ''
-        banner = {
-            'version': 0,
-            'length': 0,
-            'pid': 0,
-            'realWidth': 0,
-            'realHeight': 0,
-            'virtualWidth': 0,
-            'virtualHeight': 0,
-            'orientation': 0,
-            'quirks': 0
-        }
-        s = SafeSocket()
-        s.connect((self.adb.host, self.MNC_PORT))
-        while True:
-            chunk = s.recv(12000)
-            if len(chunk) == 0:
-                continue
-            cursor = 0
-            while cursor < len(chunk):
-                if readBannerBytes < bannerLength:
-                    if readBannerBytes == 0:
-                        banner['version'] = int(hex(chunk[cursor]), 16)
-                    elif readBannerBytes == 1:
-                        banner['length'] = bannerLength = int(hex(chunk[cursor]), 16)
-                    elif 2 <= readBannerBytes <= 5:
-                        banner['pid'] = int(hex(chunk[cursor]), 16)
-                    elif readBannerBytes == 23:
-                        banner['quirks'] = int(hex(chunk[cursor]), 16)
+    def get_frame_from_stream(self):
+        """和直播串流一样有延迟"""
+        if self.frame_gen is None:
+            self.frame_gen = self.get_stream()
+        return next(self.frame_gen)
 
-                    cursor += 1
-                    readBannerBytes += 1
-                elif readFrameBytes < 4:
-                    frameBodyLengthRemaining += (int(hex(chunk[cursor]), 16) << (readFrameBytes * 8))
-                    cursor += 1
-                    readFrameBytes += 1
-                else:
-                    # if this chunk has data of next image
-                    if len(chunk) - cursor >= frameBodyLengthRemaining:
-                        frameBody = frameBody + chunk[cursor:(cursor + frameBodyLengthRemaining)]
-                        if hex(frameBody[0]) != '0xff' or hex(frameBody[1]) != '0xd8':
-                            exit()
-                        s.close()
-                        return frameBody
-                    else:
-                        # else this chunk is still for the current image
-                        frameBody = bytes(list(frameBody) + list(chunk[cursor:len(chunk)]))
-                        frameBodyLengthRemaining -= (len(chunk) - cursor)
-                        readFrameBytes += len(chunk) - cursor
-                        cursor = len(chunk)
+    def get_frame(self):
+        param, display_info = self.get_display_info()
+        raw_data = self.adb.start_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
+                                        '%dx%d@%dx%d/%d 2>&1' % (display_info['width'], display_info['height'],
+                                                                 display_info['width'], display_info['height'],
+                                                                 display_info['rotation'])])
 
-    def get_frame_adb(self):
-        """
-        通过adb获取minicap的图片数据,并且通过cv2生成图片
-        :return:
-             接收到的图片bytes数据
-        """
-        stamp = time.time()
-        raw_data = self.adb.raw_shell([self.MNC_CMD, "-n '%s'" % self.MNC_LOCAL_NAME, '-P',
-                                       '%dx%d@%dx%d/%d -s 2>&1' % (
-                                           self.display_info['width'], self.display_info['height'],
-                                           self.display_info['width'], self.display_info['height'],
-                                           self.display_info['rotation'])], ensure_unicode=False)
-        jpg_data = raw_data.split(b"for JPG encoder" + self.adb.line_breaker)[-1]
-        jpg_data = jpg_data.replace(self.adb.line_breaker, b"\n")
-        return jpg_data, (time.time() - stamp) * 1000
 
     # @staticmethod
     # def bytes2img(b):
