@@ -34,6 +34,7 @@ class _Minicap(object):
         self.display_info = self.get_display_info()
         self.quirk_flag = 0
         self.frame_gen = None
+        self.test_name = 'minicap'
 
     def set_minicap_port(self):
         """
