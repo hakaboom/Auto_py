@@ -17,7 +17,8 @@ from typing import Tuple
 class _Minicap(object):
     """minicap模块"""
     RECVTIMEOUT = None
-    def __init__(self, adb: ADB, projection=None):
+
+    def __init__(self, adb: ADB):
         """
         :param adb: adb instance of android device
         """
@@ -82,7 +83,7 @@ class _Minicap(object):
         if self.quirk_flag & 2 and real_rotation in (90, 270):
             params = real_height, real_width, real_height, real_width, 0
         else:
-            params =real_width, real_height, real_width, real_height, real_rotation
+            params = real_width, real_height, real_width, real_height, real_rotation
 
         return params, display_info
 
