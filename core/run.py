@@ -33,8 +33,7 @@ class Android(object):
         if self.sdk_version >= SDK_VERISON_ANDROID10 and self.touch_method == TOUCH_METHOD.MINITOUCH:
             self.touch_method = TOUCH_METHOD.MAXTOUCH
         if self.touch_method == TOUCH_METHOD.MINITOUCH:
-            # self.minitouch = Minitouch(self.adb)
-            pass
+            self.minitouch = Minitouch(self.adb)
         self.minicap = Minicap(self.adb)
         self.javacap = Javacap(self.adb)
         self.maxtouch = Maxtouch(self.adb)
