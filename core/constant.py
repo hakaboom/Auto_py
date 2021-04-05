@@ -37,7 +37,7 @@ MNT_INSTALL_PATH = "./static/stf_libs/{}/minitouch"  # abi_version minitouch安�
 # maxtouch
 MAX_HOME = '/data/local/tmp/maxpresent.jar'  # maxtouch文件在手机上的路径
 MAX_INSTALL_PATH = "./static/apks/maxpresent.jar"  # maxtouch的安装路径
-MAX_LOCAL_NAME = 'maxtouch_{}' #maxtouch开放的端口名字
+MAX_LOCAL_NAME = 'maxtouch_{}'  # maxtouch开放的端口名字
 
 # yosemite
 YOSEMITE_APK = os.path.join(STATICPATH, "apks", "Yosemite.apk")
