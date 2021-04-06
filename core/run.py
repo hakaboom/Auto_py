@@ -45,7 +45,7 @@ class Android(object):
         stamp = time.time()
         img_data = None
         if self.cap_method == CAP_METHOD.MINICAP:
-            img_data = self.minicap.get_frame_from_stream()
+            img_data = self.minicap.get_frame()
         elif self.cap_method == CAP_METHOD.JAVACAP:
             img_data = self.javacap.get_frame_from_stream()
         elif self.cap_method == CAP_METHOD.ADBCAP:

@@ -20,9 +20,13 @@ class _Maxtouch(transform):
         self.MAX_PORT = 0
         self.max_x, self.max_y = None, None
         # 开启服务
+        self.start_server()
+        super(_Maxtouch, self).__init__(adb)
+
+    def start_server(self):
+        self.install()
         self.set_server()
         self.set_client()
-        super(_Maxtouch, self).__init__(adb)
 
     def _get_display_info(self):
         display_info = self.adb.get_display_info()
