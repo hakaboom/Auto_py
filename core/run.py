@@ -35,9 +35,9 @@ class Android(object):
         if self.touch_method == TOUCH_METHOD.MINITOUCH:
             self.minitouch = Minitouch(self.adb)
         self.minicap = Minicap(self.adb)
-        self.javacap = Javacap(self.adb)
-        self.maxtouch = Maxtouch(self.adb)
-        self.EVENTTOUCH = EVENTTOUCH(self.adb)
+        # self.javacap = Javacap(self.adb)
+        # self.maxtouch = Maxtouch(self.adb)
+        # self.EVENTTOUCH = EVENTTOUCH(self.adb)
         # matching mode
         self.sift = SIFT()
 
