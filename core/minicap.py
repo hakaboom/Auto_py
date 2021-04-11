@@ -30,7 +30,7 @@ class _Minicap(object):
         self.proc, self.nbsp = None, None
         # 开启服务
         self.install()
-        self.start_mnc_server()
+        self.start_server()
 
     def install(self):
         """
@@ -47,7 +47,7 @@ class _Minicap(object):
             self.push_target_mnc_so()
         logger.info('{} minicap and minicap.so is install', self.adb.device_id)
 
-    def start_mnc_server(self):
+    def start_server(self):
         """
         command adb shell {MNC_CMD} -P 1920x1080@1920x1080/0 开启minicap服务
         """
@@ -73,6 +73,21 @@ class _Minicap(object):
         self.proc = proc
         self.nbsp = nbsp
         return proc
+
+    def close_server(self):
+        """close server"""
+        self.adb.kill_process(name=MNC_HOME)
+        if self.proc:
+            self.proc.kill()
+            self.adb.close_proc_pipe(self.proc)
+        if self.nbsp:
+            self.nbsp.kill()
+        self.adb.remove_forward('tcp:{}'.format(self.MNC_PORT))
+        self.MNC_PORT = 0
+        self.quirk_flag = 0
+        self.display_info = None
+        self.proc, self.nbsp = None, None
+        logger.info('minicap ends')
 
     def _get_params(self):
         display_info = self.adb.get_display_info()
@@ -155,9 +170,9 @@ class Minicap(_Minicap):
         # Global header binary format https://github.com/openstf/minicap#global-header-binary-format
         ori, self.quirk_flag = global_headers[-2:]
 
-        if self.quirk_flag & 2 and ori in (1, 3):
+        if self.quirk_flag & 2 and ori not in (0, 1, 2):
             stopping = True
-            logger.debug("quirk_flag found, going to resetup")
+            logger.error("quirk_flag found:{}, going to resetup", self.quirk_flag)
         else:
             stopping = False
 
@@ -175,12 +190,9 @@ class Minicap(_Minicap):
                 s.close()
                 return frame_data
 
-        logger.error('minicap ends')
+        logger.info('get_frame ends')
         s.close()
-        self.nbsp.kill()
-        self.proc.kill()
-        self.adb.remove_forward('tcp:{}'.format(self.MNC_PORT))
-        self.adb.close_proc_pipe(self.proc)
+        self.close_server()
         return None
 
     def get_frame_adb(self):
