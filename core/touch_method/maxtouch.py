@@ -115,7 +115,7 @@ class Maxtouch(_Maxtouch):
             index: 使用的手指
             pressure: 按压力度
         """
-        x, y = self.transform_xy(x, y)
+        x, y = self.transform(x, y)
         if x > self.max_x or y > self.max_y:
             raise OverflowError('坐标不能大于max值, x={},y={},max_x={},max_y={}'.format(x, y, self.max_x, self.max_y))
         s = 'd {} {} {} {}\nc\n'.format(index, x, y, pressure)

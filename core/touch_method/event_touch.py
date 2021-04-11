@@ -76,7 +76,7 @@ class Touch(object):
         return path, width, height
 
     def _build_down(self,  x: int, y: int, index: int = 1):
-        x, y = self.Touch_event.transform_xy(x, y)
+        x, y = self.Touch_event.transform(x, y)
         eventPath = self.event_path
         event_id = self.Touch_event.event_id
         self.Touch_event.add_event_id()
@@ -93,7 +93,7 @@ class Touch(object):
         return '&&'.join(t)
 
     def _build_up(self, x: int, y: int, index: int = 1):
-        x, y = self.Touch_event.transform_xy(x, y)
+        x, y = self.Touch_event.transform(x, y)
         eventPath = self.event_path
         index_count = self.Touch_event.index_count
         self.Touch_event.index_up(index)

@@ -162,7 +162,7 @@ class Minitouch(_Minitouch):
             index: 使用的手指
             pressure: 按压力度
         """
-        x, y = self.transform_xy(x, y)
+        x, y = self.transform(x, y)
         s = 'd {} {} {} {}\nc\n'.format(index, x, y, pressure)
         self.send(s)
 
@@ -192,8 +192,8 @@ class Minitouch(_Minitouch):
         :return:
             None
         """
-        start_x, start_y = self.transform_xy(start[0], start[1])
-        end_x, end_y = self.transform_xy(end[0], end[1])
+        start_x, start_y = self.transform(start[0], start[1])
+        end_x, end_y = self.transform(end[0], end[1])
         x, y = 0, 0
         t = ["d {} {} {} {}\nc\n".format(index, start_x, start_y, pressure)]
         for i in range(spacing, 100, spacing):
