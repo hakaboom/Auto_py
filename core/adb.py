@@ -14,7 +14,7 @@ from typing import Union, Tuple
 import numpy as np
 from loguru import logger
 
-from core.utils.base import SUBPROCESS_FLAG
+from core.utils.base import SUBPROCESS_FLAG, pprint
 from core.constant import DEFAULT_ADB_PATH, SHELL_ENCODING, ADB_CAP_NAME_RAW, ADB_CAP_REMOTE_RAW_PATH, \
     ADB_CAP_LOCAL_PATH, ADB_CAP_REMOTE_PATH
 from core.error import AdbError
@@ -41,7 +41,6 @@ class _ADB(object):
         # raw临时文件存放到工程的路径
         self._cap_raw_remote_path = ADB_CAP_REMOTE_RAW_PATH.format(self._cap_name)
         # 已经使用的端口
-        self._forward_local_using = self.get_forwards()
         self._sdk_version = self.sdk_version()
 
     @staticmethod
@@ -109,6 +108,7 @@ class _ADB(object):
                 raise logger.error('please set device_id first')
             cmd_options = self.cmd_options + ['-s', self.device_id]
             logger.debug('adb -s {} {}', self.device_id, " ".join(cmds))
+            # logger.debug('adb {}', " ".join(cmds))
         else:
             cmd_options = self.cmd_options
             logger.debug('adb {}', " ".join(cmds))
@@ -324,11 +324,11 @@ class _ADB(object):
             if no_rebind:
                 cmds += ['--no-rebind']
             self.cmd(cmds + [local, remote])
-            self._forward_local_using.append({'local': local, 'remote': remote})
             logger.debug('forward {} {}', local, remote)
         else:
-            logger.info('{} {} has been forward', self._forward_local_using[index]['local'],
-                        self._forward_local_using[index]['remote'])
+            forward_local_using = self.get_forwards()
+            logger.info('{} {} has been forward', forward_local_using[index]['local'],
+                        forward_local_using[index]['remote'])
 
     def get_available_forward_local(self) -> int:
         """
@@ -462,8 +462,9 @@ class _ADB(object):
         """获取开放端口的端口号"""
         index = self._local_in_forwards(remote='localabstract:%s' % remote)
         if not index[0]:
-            logger.error('')
-        return int(re.compile(r'tcp:(\d+)').findall(self._forward_local_using[index[1]]['local'])[0])
+            logger.error('No port corresponding to remote was found')
+            return None
+        return int(re.compile(r'tcp:(\d+)').findall(self.get_forwards()[index[1]]['local'])[0])
 
     def remove_forward(self, local=None):
         """
@@ -478,10 +479,6 @@ class _ADB(object):
         else:
             cmds = ['forward', '--remove-all']
         self.cmd(cmds)
-        local_using, index = local and self._local_in_forwards(local) or (False, -1)
-        # 删除在_forward_local_using里的记录
-        if local_using:
-            del self._forward_local_using[index]
 
     def get_forwards(self) -> list:
         """
