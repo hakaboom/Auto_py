@@ -1,12 +1,6 @@
 # Auto_py
 简单点说抄airtest的
 
-目前主要有以下部分:
-
-* 集成了[minitouch](https://github.com/DeviceFarmer/minitouch)实时控制设备
-* 集成了[minicap](https://github.com/DeviceFarmer/minicap)流式传输实时屏幕捕获数据
-
-
 ## 系统要求
 python3.8
 
@@ -38,5 +32,5 @@ python3.8
   - 使用minitouch服务,socket传输点击,速度最快
   
 - SIFT特征点获取时间太慢，应该加入SURF
-- UI识别中,针对于多分辨率适配,按照我目前的经验来说,对于不变的UI,应该从高分辨率获取特征模板,在其他分辨率中
+- UI识别中,针对于多分辨率适配,按照我目前的经验来说,应该从高分辨率获取特征模板,在其他分辨率中
   通过缩放模板的大小,进行模板匹配(游戏引擎会根据原始图像进行缩放,一般画大的,往小的缩)。
