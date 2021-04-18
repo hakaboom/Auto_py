@@ -2,7 +2,7 @@
 import os
 import cv2
 import itertools
-from coordinate import Rect
+from core.utils.coordinate import Rect
 import numpy as np
 
 

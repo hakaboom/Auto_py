@@ -3,8 +3,6 @@
 """ opencv matchTemplate"""
 import cv2
 import time
-import numpy as np
-from coordinate import Rect
 from core.cv.base_image import check_detection_input
 from core.cv.utils import generate_result
 
@@ -90,7 +88,7 @@ def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEF
 
 if __name__ == '__main__':
     from core.cv.base_image import image
-    from coordinate import Anchor,  Rect
+    from core.utils.coordinate import Anchor,  Rect
     from core.cv.match_template import find_templates
     Anchor = Anchor(dev={'width': 1920, 'height': 1080},
                     cur={'width': 3400, 'height': 1440, 'left': 260, 'right': 260}, orientation=1)

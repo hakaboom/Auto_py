@@ -204,8 +204,12 @@ class Rect(object):
         return False
 
     @staticmethod
-    def init_width_point_size(point: Point, size: Size):
+    def create_by_point_size(point: Point, size: Size):
         return Rect(point.x, point.y, size.width, size.height)
+
+    @staticmethod
+    def create_by_2_point(tl_point: Point, br_point: Point):
+        return Rect(tl_point.x, tl_point.y, br_point.x-tl_point.x, br_point.y-tl_point.y)
 
 
 Rect.ZERO = Rect(0, 0, 0, 0)

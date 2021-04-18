@@ -1,14 +1,11 @@
 #! usr/bin/python
 # -*- coding:utf-8 -*-
 import cv2
-import time
-from coordinate import Rect, Size
-from core.constant import ADB_CAP_REMOTE_PATH
+from core.utils.coordinate import Rect, Size
 from core.utils.base import auto_increment
 from core.cv.utils import read_image, bgr_2_gray, bytes_2_img
 from core.cv.thresholding import otsu
 import numpy as np
-from loguru import logger
 
 
 class _image(object):
@@ -30,7 +27,7 @@ class _image(object):
             self.image_data = read_image('{}{}'.format(self.tmp_path, img), flags)
         elif isinstance(img, np.ndarray):
             self.image_data = img
-        elif isinstance(img, image):
+        elif isinstance(img, _image):
             self.image_data = img.imread().copy()
         elif isinstance(img, bytes):
             self.image_data = bytes_2_img(img)
@@ -127,6 +124,10 @@ class image(_image):
     def resize(self, w, h):
         self.imwrite(cv2.resize(self.imread(), (int(w), int(h))))
         return self
+
+    def cv2_to_base64(self):
+        data = cv2.imencode('.png', self.imread())
+        return data
 
 
 def check_detection_input(im_source, im_search):
