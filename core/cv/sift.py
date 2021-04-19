@@ -11,6 +11,7 @@ from core.cv.utils import create_similar_rect, generate_result
 from core.cv.base_image import check_detection_input
 from core.cv.match_template import cal_rgb_confidence
 from core.utils.coordinate import Rect, Size
+from core.utils.base import pprint
 
 
 class SIFT(object):
@@ -40,10 +41,12 @@ class SIFT(object):
         # 第三步,通过识别矩阵周围+-1像素的矩阵,求出结果可信度，并且返回最大精准度的范围
         confidences = []
         similar_rect = create_similar_rect(rect.x, rect.y, rect.width, rect.height)
+        pprint(similar_rect)
         h, w = im_search.shape[:2]
         for i in similar_rect:
             # cv2.matchTemplate 目标和模板长宽不能一大一小
             target_img = im_source[i.tl.y:i.br.y, i.tl.x:i.br.x]
+            print(i)
             target_img = cv2.resize(target_img, (w, h))
             confidences.append(self._cal_sift_confidence(resize_img=target_img, im_search=im_search))
         # 提取最大值
@@ -103,11 +106,6 @@ class SIFT(object):
         for m, n in matches:
             if m.distance < self.FILTER_RATIO * n.distance:
                 good.append(m)
-        # img = cv2.drawMatchesKnn(im_search, kp_sch, im_source, kp_src, np.expand_dims(good, 1), None, flags=2)
-        # img = cv2.drawMatchesKnn(im_search, kp_sch, im_source, kp_src, matches, None, flags=2)
-        # cv2.namedWindow('test', cv2.WINDOW_KEEPRATIO)
-        # cv2.imshow('test', img)
-        # cv2.waitKey(0)
         return kp_sch, kp_src, good
 
     def _handle_one_good_points(self, kp_src, good, threshold):

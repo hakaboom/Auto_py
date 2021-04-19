@@ -9,14 +9,18 @@ from core.utils.coordinate import Rect
 
 
 def cal_rgb_confidence(img_src_rgb, img_sch_rgb):
-    src_bgr = cv2.split(img_src_rgb)
-    sch_bgr = cv2.split(img_sch_rgb)
+    img_sch_rgb = cv2.copyMakeBorder(img_sch_rgb, 10, 10, 10, 10, cv2.BORDER_REPLICATE)
+    # 转HSV强化颜色的影响
+    img_src_rgb = cv2.cvtColor(img_src_rgb, cv2.COLOR_BGR2HSV)
+    img_sch_rgb = cv2.cvtColor(img_sch_rgb, cv2.COLOR_BGR2HSV)
+    src_bgr, sch_bgr = cv2.split(img_src_rgb), cv2.split(img_sch_rgb)
     # 计算BGR三通道的confidence，存入bgr_confidence:
     bgr_confidence = [0, 0, 0]
     for i in range(3):
         res_temp = cv2.matchTemplate(src_bgr[i], sch_bgr[i], cv2.TM_CCOEFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res_temp)
         bgr_confidence[i] = max_val
+    print(bgr_confidence)
     return min(bgr_confidence)
 
 

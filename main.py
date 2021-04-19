@@ -18,7 +18,8 @@ from core.run import Android
 
 
 # print(device.adb.sdk_version(), device.adb.abi_version())
-# device = Android(device_id='192.168.1.194:5555', cap_method='javacap')
+# device = Android(device_id='emulator-5554', cap_method='javacap')
+# device.screenshot().save2path()
 # cv2.namedWindow('capture', cv2.WINDOW_KEEPRATIO)
 # while True:
 #     img = device.screenshot().imread()
@@ -27,18 +28,11 @@ from core.run import Android
 #         cv2.destroyAllWindows()
 #         exit(0)
 
-from core.cv.base_image import image
-from core.utils.coordinate import Anchor, Rect, Point, Size
-from core.cv.match_template import find_templates,find_template
-
-
-img = image('./tmp/test1.png')
-im_search = image('./tmp/test2.png')
-a = find_templates(im_source=img, im_search=im_search)
-
-if a:
-    for i in a:
-        img.rectangle(i['rect'])
-
-img.imshow()
-cv2.waitKey(0)
+if __name__ == '__main__':
+    from core.cv.base_image import image
+    from core.cv.sift import SIFT
+    sift = SIFT()
+    im_search = image('./tmp/test4.png')
+    img = image('./tmp/test1.png')
+    a = sift.find_sift(im_search=im_search, im_source=img)
+    print(a)
