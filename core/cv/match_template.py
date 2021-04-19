@@ -4,7 +4,8 @@
 import cv2
 import time
 from core.cv.base_image import check_detection_input
-from core.cv.utils import generate_result
+from core.cv.utils import generate_result, img_mat_rgb_2_gray
+from core.utils.coordinate import Rect
 
 
 def cal_rgb_confidence(img_src_rgb, img_sch_rgb):
@@ -19,7 +20,7 @@ def cal_rgb_confidence(img_src_rgb, img_sch_rgb):
     return min(bgr_confidence)
 
 
-def find_template(im_source, im_search, threshold: int = 0.85, mode=cv2.TM_CCOEFF_NORMED):
+def find_template(im_source, im_search, threshold: float = 0.85, mode=cv2.TM_CCOEFF_NORMED):
     """
     模板匹配
     :param im_source: 待匹配图像
@@ -31,7 +32,7 @@ def find_template(im_source, im_search, threshold: int = 0.85, mode=cv2.TM_CCOEF
     start = time.time()
     im_source, im_search = check_detection_input(im_source, im_search)
     # 模板匹配取得res矩阵
-    res = cv2.matchTemplate(im_source, im_search, mode)
+    res = _get_template_result_matrix(im_source, im_search)
     # 找到最佳匹配项
     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
     h, w = im_search.shape[:2]
@@ -49,7 +50,7 @@ def find_template(im_source, im_search, threshold: int = 0.85, mode=cv2.TM_CCOEF
     return generate_result(rect, confidence)
 
 
-def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEFF_NORMED, max_count=10):
+def find_templates(im_source, im_search, threshold: float = 0.9, max_count=10):
     """
     模板匹配
     :param im_source: 待匹配图像
@@ -62,7 +63,7 @@ def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEF
     start = time.time()
     im_source, im_search = check_detection_input(im_source, im_search)
     # 模板匹配取得res矩阵
-    res = cv2.matchTemplate(im_source, im_search, mode)
+    res = _get_template_result_matrix(im_source, im_search)
     result = []
     h, w = im_search.shape[:2]
 
@@ -70,7 +71,6 @@ def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEF
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
         img_crop = im_source[max_loc[1]:max_loc[1] + h, max_loc[0]: max_loc[0] + w]
         confidence = cal_rgb_confidence(img_crop, im_search)
-
         if confidence < threshold or len(result) > max_count:
             break
         x, y = max_loc
@@ -80,10 +80,17 @@ def find_templates(im_source, im_search, threshold: int = 0.9, mode=cv2.TM_CCOEF
         cv2.rectangle(res, (int(max_loc[0] - 1), int(max_loc[1] - 1)),
                       (int(max_loc[0] + 1), int(max_loc[1] + 1)), (0, 0, 0), -1)
     if result:
-        print('[tpls] find counts:{counts}, time={time:.2f}{result}'.format(counts=len(result),
-                                                                            time=(time.time() - start)*1000,
+        print('[tpls] find counts:{counts}, time={time:.2f}{result}ms'.format(counts=len(result),
+                                                                              time=(time.time() - start)*1000,
               result=''.join(['\n\t{}, confidence={}'.format(x['rect'], x['confidence']) for x in result])))
     return result if result else None
+
+
+def _get_template_result_matrix(im_source, im_search):
+    """求取模板匹配的结果矩阵."""
+    # 灰度识别: cv2.matchTemplate( )只能处理灰度图片参数
+    s_gray, i_gray = img_mat_rgb_2_gray(im_search), img_mat_rgb_2_gray(im_source)
+    return cv2.matchTemplate(i_gray, s_gray, cv2.TM_CCOEFF_NORMED)
 
 
 if __name__ == '__main__':

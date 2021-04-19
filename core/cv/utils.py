@@ -68,3 +68,11 @@ def create_similar_rect(x, y, w, h):
             t.append(Rect(x=x[i[0]], y=y[i[1]], width=w[i[2]], height=h[i[3]]))
     return t
 
+
+def img_mat_rgb_2_gray(img_mat):
+    """
+    Turn img_mat into gray_scale, so that template match can figure the img data.
+    "print(type(im_search[0][0])")  can check the pixel type.
+    """
+    assert isinstance(img_mat[0][0], np.ndarray), "input must be instance of np.ndarray"
+    return cv2.cvtColor(img_mat, cv2.COLOR_BGR2GRAY)

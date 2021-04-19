@@ -19,7 +19,6 @@ from core.run import Android
 
 # print(device.adb.sdk_version(), device.adb.abi_version())
 # device = Android(device_id='192.168.1.194:5555', cap_method='javacap')
-# device.screenshot().save2path()
 # cv2.namedWindow('capture', cv2.WINDOW_KEEPRATIO)
 # while True:
 #     img = device.screenshot().imread()
@@ -28,53 +27,18 @@ from core.run import Android
 #         cv2.destroyAllWindows()
 #         exit(0)
 
-from core.utils.behavior_tree import Blackboard, Sequence
-
-Main = Blackboard()
-Main.set_value_bath(dict(count=0, index=1))
-login = Sequence()
-login.set_loop(True, -1, -1, 1)
-login_success = Main.create_scene()
-login_error = Main.create_scene()
-login.add_scenes([login_success, login_error])
+from core.cv.base_image import image
+from core.utils.coordinate import Anchor, Rect, Point, Size
+from core.cv.match_template import find_templates,find_template
 
 
-update = Sequence()
-login_success.add_sequence(update)
-update.set_loop(True, -1, -1, 1)
-update_true = Main.create_scene()
-update_error = Main.create_scene()
-update.add_scenes([update_true, update_error])
+img = image('./tmp/test1.png')
+im_search = image('./tmp/test2.png')
+a = find_templates(im_source=img, im_search=im_search)
 
+if a:
+    for i in a:
+        img.rectangle(i['rect'])
 
-"""
-login(sequence) 
-    - login_success(scene) add scene
-            -- update(sequence) add sequence
-                -- update_true(scene)
-                -- update_error(scene)
-    - login_error(scene) add scene
-"""
-
-
-@login_success.set_start_trigger
-def login_success_rule(blackboard: Blackboard):
-    return blackboard.get_value('count') == 0
-
-
-@login_error.set_start_trigger
-def login_error_rule(blackboard: Blackboard):
-    return blackboard.get_value('index') == 0
-
-
-@update_true.set_start_trigger
-def update_true_rule(b: Blackboard):
-    return False
-
-
-@update_error.set_start_trigger
-def update_error_rule(b: Blackboard):
-    return False
-
-
-login.run()
+img.imshow()
+cv2.waitKey(0)
