@@ -14,18 +14,17 @@ class Blackboard(object):
         self.__tag = 'Blackboard'
         self.con = {}
 
-    def set_value(self, Member, Value):
-        self.con[Member] = Value
+    def set_value(self, member, value):
+        self.con[member] = value
 
-    def get_value(self, Member, DefaultValue=None):
-        return self.con.get(Member, DefaultValue)
+    def get_value(self, member, defaultValue=None):
+        return self.con.get(member, defaultValue)
 
-    def set_value_bath(self, Value: dict):
-        self.con.update(Value)
+    def set_value_bath(self, value: dict):
+        self.con.update(value)
 
-    def get_value_all(self, Target=None):
-        Target = Target or self
-        return Target.con
+    def get_all_value(self):
+        return self.con
 
     def create_scene(self):
         return Scene(self)
@@ -39,7 +38,7 @@ class Scene(object):
 
     def __init__(self, blackboard):
         self.__tag = 'Scene'
-        self.child = none_fun
+        self.child = []
         self.blackboard = blackboard
         # 触发器
         self.startTrigger = Trigger(blackboard)  # 运行触发器
@@ -51,9 +50,13 @@ class Scene(object):
 
     def add_sequence(self, sequence):
         if isinstance(sequence, Sequence):
-            self.child = sequence
+            self.child.append(sequence)
         else:
             raise ValueError('value is not Sequence please check')
+
+    def add_sequences(self, sequences: list):
+        for sequence in sequences:
+            self.add_sequence(sequence)
 
     def set_start_trigger(self, fun):
         if not isfunction(fun):
@@ -71,8 +74,8 @@ class Scene(object):
             if not self.endTrigger.check():
                 self.doingBehavior.run()
             self.endingBehavior.run()
-            if isinstance(self.child, Sequence):
-                self.child.run()
+            for sequence in self.child:
+                sequence.run()
             return True
         return False
 
@@ -127,57 +130,62 @@ class Sequence(object):
         self.maxCount = -1
         self.maxTime = -1
         self.loopIntervalTime = 0
+        self.loopName = ''
         self.loopEndTrigger = Trigger(blackboard)
 
-    def add_scene(self, *args):
-        for scene in args:
-            if isinstance(scene, Scene):
-                self.scenes.append(dict(name=get_varible_name(scene), scene=scene))
-            else:
-                raise ValueError('{} is not Scene, tuple index={}'.format(scene, args.index(scene)))
+    def add_scene(self, scene):
+        if isinstance(scene, Scene):
+            self.scenes.append(dict(name=get_varible_name(scene), scene=scene))
+        else:
+            raise ValueError('{} is not Scene'.format(scene))
 
-    def get_loopEndTrigger(self):
+    def add_scenes(self, scenes: list):
+        for scene in scenes:
+            self.add_scene(scene)
+
+    def get_end_trigger(self):
         return self.loopEndTrigger
 
-    def setLoop(self, isLoop, LoopCount=-1, LoopTime=-1, IntervalTime=0):
+    def set_loop(self, isLoop=False, loopCount=-1, loopTime=-1, IntervalTime=0, name=None):
         """
             设置场景检测的循环方式
             参数:	isLoop		Bool型,是否循环
-                    LoopCount 	循环次数
-                    LoopTime 	循环最长时间
+                    loopCount 	循环次数
+                    loopTime 	循环最长时间
                     IntervalTime每次循环的间隔(毫秒)
         """
         self.isLoop = isLoop
-        self.maxCount = LoopCount
-        self.maxTime = LoopTime
+        self.maxCount = loopCount
+        self.maxTime = loopTime
         self.loopIntervalTime = IntervalTime
+        self.loopName = name or get_varible_name(self)
 
-    def getLoop(self):
+    def get_loop(self):
         return dict(isLoop=self.isLoop, maxCount=self.maxCount,
                     maxTime=self.maxTime, loopIntervalTime=self.loopIntervalTime)
 
     def run(self):
         flag = False
-        loopTime = time.time()
-        loopCount = 1
+        loop_time = time.time()
+        loop_count = 1
         while True:
             if flag:
-                loopTime = time.time()
-                loopCount = 0
+                loop_time = time.time()
+                loop_count = 0
+            print('now running sequence: {}'.format(self.loopName))
             for v in self.scenes:
                 flag = v['scene'].run()
                 if flag:
                     break
             if self.loopEndTrigger.check():
                 break
-            loopCount += 1
+            loop_count += 1
             if self.loopIntervalTime > 0:
                 time.sleep(self.loopIntervalTime)
             # 退出条件
             if (not flag and not self.isLoop) or ((self.isLoop and not flag) and (
-                    not self.maxTime == -1 and (loopTime + self.maxTime < time.time()) or False) or (
-                                                          not self.maxCount == -1 and (
-                                                          loopCount > self.maxCount) or False)):
+                    not self.maxTime == -1 and (loop_time + self.maxTime < time.time()) or False) or (
+                    not self.maxCount == -1 and (loop_count > self.maxCount) or False)):
                 return
 
     def get_scene_tree(self):
@@ -196,12 +204,60 @@ class Sequence(object):
     def print_scene_tree(self):
         tree = []
         for child in self.get_scene_tree():
-            print(child)
             if isinstance(child, tuple):
-                s = '{name}({type})={value}'.format(type='Sequence',value=child[1], name=child[0])
+                s = '{name}({type})={value}'.format(type='Sequence', value=child[1], name=child[0])
             else:
                 s = '{type}={name}'.format(type='scene', name=child)
             tree.append(s)
         print(tree)
         # for value in tree:
         #     print(value)
+
+
+if __name__ == '__main__':
+    Main = Blackboard()
+    Main.set_value_bath(dict(count=0, index=1))
+    login = Sequence()
+    login.set_loop(True, -1, -1, 1)
+    login_success = Main.create_scene()
+    login_error = Main.create_scene()
+    login.add_scenes([login_success, login_error])
+
+    update = Sequence()
+    login_success.add_sequence(update)
+    update.set_loop(True, -1, -1, 1)
+    update_true = Main.create_scene()
+    update_error = Main.create_scene()
+    update.add_scenes([update_true, update_error])
+
+    """
+    login(sequence) 
+        - login_success(scene) add scene
+                -- update(sequence) add sequence
+                    -- update_true(scene)
+                    -- update_error(scene)
+        - login_error(scene) add scene
+    """
+
+
+    @login_success.set_start_trigger
+    def login_success_rule(blackboard: Blackboard):
+        return blackboard.get_value('count') == 0
+
+
+    @login_error.set_start_trigger
+    def login_error_rule(blackboard: Blackboard):
+        return blackboard.get_value('index') == 0
+
+
+    @update_true.set_start_trigger
+    def update_true_rule(b: Blackboard):
+        return False
+
+
+    @update_error.set_start_trigger
+    def update_error_rule(b: Blackboard):
+        return False
+
+
+    login.run()

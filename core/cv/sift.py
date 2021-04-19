@@ -10,7 +10,7 @@ from numpy import ndarray
 from core.cv.utils import create_similar_rect, generate_result
 from core.cv.base_image import check_detection_input
 from core.cv.match_template import cal_rgb_confidence
-from coordinate import Rect, Size
+from core.utils.coordinate import Rect, Size
 
 
 class SIFT(object):

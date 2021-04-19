@@ -27,6 +27,7 @@ class Android(object):
         self._display_info = {}
         self.tmp_image = Image(path=ADB_CAP_REMOTE_PATH.format(self.adb.get_device_id(decode=True)))
         self.sdk_version = self.adb.sdk_version()
+        self.sift = SIFT()
         # init components
         self.cap_method = cap_method
         self.touch_method = touch_method
@@ -34,12 +35,13 @@ class Android(object):
             self.touch_method = TOUCH_METHOD.MAXTOUCH
         if self.touch_method == TOUCH_METHOD.MINITOUCH:
             self.minitouch = Minitouch(self.adb)
-        self.minicap = Minicap(self.adb)
-        # self.javacap = Javacap(self.adb)
-        # self.maxtouch = Maxtouch(self.adb)
-        # self.EVENTTOUCH = EVENTTOUCH(self.adb)
+        #  由于在一些设备上minicap无法启动,因此做了一些限制 error: have different types
+        if self.cap_method == CAP_METHOD.MINICAP:
+            self.minicap = Minicap(self.adb)
+        self.javacap = Javacap(self.adb)
+        self.maxtouch = Maxtouch(self.adb)
+        self.EVENTTOUCH = EVENTTOUCH(self.adb)
         # matching mode
-        self.sift = SIFT()
 
     def screenshot(self):
         stamp = time.time()
