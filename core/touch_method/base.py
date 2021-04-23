@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 from core.utils.base import pprint
 from core.adb import ADB
+from loguru import logger
 
 
 class transform(object):
     def __init__(self, adb: ADB):
-        self.size_info = adb.get_display_info()
+        self.adb = adb
+        self.size_info = self.adb.get_display_info()
 
     def transform(self, x, y):
         x, y = self.ori_transform(x, y)
@@ -26,3 +28,7 @@ class transform(object):
 
     def transform_xy(self, x, y):
         return x, y
+
+    def update_rotation(self, rotation):
+        logger.info("touch update_rotation: {}", rotation)
+        self.size_info = self.adb.get_display_info()

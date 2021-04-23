@@ -30,7 +30,7 @@ class _ADB(object):
         self._set_cmd_options(host, port)
         self.connect()
         self._event_path = None  # event信息
-        self._display_info = []  # 需要通过minicap模块获取
+        self._display_info = {}
         self._line_breaker = None
         # 截图文件名字
         self._cap_name = ADB_CAP_NAME_RAW.format(self.get_device_id(decode=True))

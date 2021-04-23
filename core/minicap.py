@@ -4,6 +4,7 @@ import json
 import re
 import time
 import struct
+import threading
 from loguru import logger
 from core.adb import ADB
 from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME,
@@ -11,7 +12,6 @@ from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME,
 from core.utils.safesocket import SafeSocket
 from core.utils.nbsp import NonBlockingStreamReader
 from core.utils.snippet import reg_cleanup
-from typing import Tuple
 
 
 class _Minicap(object):
@@ -28,6 +28,7 @@ class _Minicap(object):
         self.quirk_flag = 0
         self.display_info = None
         self.proc, self.nbsp = None, None
+        self._update_rotation_event = threading.Event()
         # 开启服务
         self.install()
         self.start_server()
@@ -88,6 +89,10 @@ class _Minicap(object):
         self.display_info = None
         self.proc, self.nbsp = None, None
         logger.info('minicap ends')
+
+    def restart_server(self):
+        self.close_server()
+        self.start_server()
 
     def _get_params(self):
         display_info = self.adb.get_display_info()
@@ -162,6 +167,13 @@ class _Minicap(object):
 
 class Minicap(_Minicap):
     def get_frame(self):
+        if self._update_rotation_event.is_set():
+            logger.info('minicap update_rotation')
+            self.restart_server()
+            self._update_rotation_event.clear()
+        return self._get_frame()
+
+    def _get_frame(self):
         s = SafeSocket()
         s.connect((self.adb.host, self.MNC_PORT))
         t = s.recv(24)
@@ -210,3 +222,7 @@ class Minicap(_Minicap):
         jpg_data = raw_data.split(b"for JPG encoder" + self.adb.line_breaker)[-1]
         jpg_data = jpg_data.replace(self.adb.line_breaker, b"\n")
         return jpg_data, (time.time() - stamp) * 1000
+
+    def update_rotation(self, rotation):
+        logger.debug("minicap update_rotation: {}", rotation)
+        self._update_rotation_event.set()

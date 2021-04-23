@@ -82,3 +82,7 @@ class Javacap(Yosemite):
         if self.frame_gen is None:
             self.frame_gen = self.get_frames()
         return self.frame_gen.send(None)
+
+    def update_rotation(self, rotation):
+        """ javacap 不需要转换"""
+        pass
