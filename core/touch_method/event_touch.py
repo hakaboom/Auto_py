@@ -120,17 +120,19 @@ class Touch(object):
         s = self._build_up(x, y, index)
         self.adb.start_shell(s)
 
-    def click(self, x: int, y: int, index: int = 0, duration: int = 20):
+    def click(self, x: int, y: int, index: int = 0, duration=0.1):
         down = self._build_down(x, y, index)
         up = self._build_up(x, y, index)
-        self.adb.start_shell('{}&&{}'.format(down, up))
-
-    def long_click(self, x: int, y: int, index: int = 1, duration: int = 500):
-        down = self._build_down(x, y, index)
-        up = self._build_up(x, y, index)
-        self.adb.start_shell('&&'.join(down))
+        self.adb.start_shell(down)
         self.sleep(duration)
-        self.adb.start_shell('&&'.join(up))
+        self.adb.start_shell(up)
 
-    def sleep(self, duration: int = 50):
-        time.sleep(duration / 1000)
+    def long_click(self, x: int, y: int, index: int = 1, duration=1):
+        down = self._build_down(x, y, index)
+        up = self._build_up(x, y, index)
+        self.adb.start_shell(down)
+        self.sleep(duration)
+        self.adb.start_shell(up)
+
+    def sleep(self, duration=0.1):
+        time.sleep(duration)

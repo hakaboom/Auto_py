@@ -145,7 +145,7 @@ class Minitouch(_Minitouch):
             raise OverflowError('坐标不能大于max值, x={},y={},max_x={},max_y={}'.format(nx, ny, self.max_x, self.max_y))
         return "%.0f" % nx, "%.0f" % ny
 
-    def sleep(self, duration: int):
+    def sleep(self, duration):
         """
         command: 'w <ms>\n'
         """
@@ -212,7 +212,7 @@ class Minitouch(_Minitouch):
     def reset_events(self):
         self.send('r\n')
 
-    def click(self, x: int, y: int, index: int = 0, duration: int = 20):
+    def click(self, x: int, y: int, index: int = 0, duration=0.1):
         self.down(x, y, index)
-        self.sleep(duration)
+        self.sleep(duration*1000)
         self.up(x, y, index)

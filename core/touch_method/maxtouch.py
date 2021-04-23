@@ -105,6 +105,9 @@ class Maxtouch(_Maxtouch):
             raise OverflowError('坐标不能大于max值, x={},y={},max_x={},max_y={}'.format(nx, ny, self.max_x, self.max_y))
         return nx, ny
 
+    def sleep(self, duration):
+        time.sleep(duration)
+
     def down(self, x: int, y: int, index: int = 0, pressure: int = 50):
         """
         command: 'd <index> <x> <y> <pressure>\n'
@@ -131,7 +134,8 @@ class Maxtouch(_Maxtouch):
         s = 'u {}\nc\n'.format(index)
         self.send(s)
 
-    def click(self, x: int, y: int, index: int = 0, duration: int = 20):
+    def click(self, x: int, y: int, index: int = 0, duration=0.1):
         self.down(x, y, index)
-        time.sleep(duration / 1000)
+        self.sleep(duration)
         self.up(x, y, index)
+

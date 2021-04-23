@@ -8,6 +8,7 @@ from core.touch_method.minitouch import Minitouch
 from core.touch_method.maxtouch import Maxtouch
 from core.constant import TOUCH_METHOD, CAP_METHOD, SDK_VERISON_ANDROID10
 from core.Javecap import Javacap
+from core.rotation import Rotation
 from core.utils.base import initLogger, pprint
 from core.cv.base_image import image as Image
 from core.cv.sift import SIFT
@@ -41,7 +42,9 @@ class Android(object):
         self.javacap = Javacap(self.adb)
         self.maxtouch = Maxtouch(self.adb)
         self.EVENTTOUCH = EVENTTOUCH(self.adb)
-        # matching mode
+        self.rotation_watcher = Rotation(self.adb)
+        self.rotation_watcher.start()
+        self._register_rotation_watcher()
 
     def screenshot(self):
         stamp = time.time()
@@ -69,13 +72,13 @@ class Android(object):
         elif self.touch_method == TOUCH_METHOD.ADBTOUCH:
             return self.EVENTTOUCH.up(x, y, index)
 
-    def sleep(self, duration: int = 50):
+    def sleep(self, duration):
         if self.touch_method == TOUCH_METHOD.MINITOUCH:
             return self.minitouch.sleep(duration)
         elif self.touch_method == TOUCH_METHOD.ADBTOUCH:
             return self.EVENTTOUCH.sleep(duration)
 
-    def click(self, x: int, y: int, index: int = 0, duration: int = 20):
+    def click(self, x: int, y: int, index: int = 0, duration=0.1):
         logger.info("[{}]index={}, x={}, y={}", self.touch_method, index, x, y)
         if self.touch_method == TOUCH_METHOD.MINITOUCH:
             return self.minitouch.click(x, y, index=index, duration=duration)
@@ -96,3 +99,24 @@ class Android(object):
                 # Even if minicap execution fails, use adb instead
                 return self.adb.get_display_info()
         return self.adb.get_display_info()
+
+    def _get_touch_method(self):
+        if self.touch_method == TOUCH_METHOD.MAXTOUCH:
+            return self.maxtouch
+        elif self.touch_method == TOUCH_METHOD.MINITOUCH:
+            return self.minitouch
+        elif self.touch_method == TOUCH_METHOD.ADBTOUCH:
+            return self.EVENTTOUCH
+
+    def _get_cap_func(self):
+        if self.cap_method == CAP_METHOD.MINICAP:
+            return self.minicap
+        elif self.cap_method == CAP_METHOD.JAVACAP:
+            return self.javacap
+        elif self.cap_method == CAP_METHOD.ADBCAP:
+            return self.adb.screenshot
+
+    def _register_rotation_watcher(self):
+        self.rotation_watcher.reg_callback(lambda x: self._get_touch_method().update_rotation(x * 90))
+        if self.cap_method == CAP_METHOD.MINICAP:
+            self.rotation_watcher.reg_callback(lambda x: self.minicap.update_rotation(x * 90))
