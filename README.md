@@ -12,10 +12,10 @@ python3.8
 - [x] darknet-yolov4识别
 - [x] SIFT特征点匹配
 - [x] ocr使用PaddleOCR
+- [x] 设备旋转时的,minicap重启和坐标轴的转换
+- [x] 行为树
 
 ## 待完成事项
-- [ ]  minicap服务开启过程中,如果手机进行了旋转,截图会出现问题
-- [ ]  行为树的重新构建
 - [ ]  编译opencv-cudn
 
   
