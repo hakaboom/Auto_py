@@ -25,7 +25,7 @@ class _image(object):
     def imwrite(self, img, flags: int = cv2.IMREAD_COLOR):
         if type(img) == str:
             self.image_data = read_image('{}{}'.format(self.tmp_path, img), flags)
-        elif isinstance(img, np.ndarray):
+        elif isinstance(img, np.ndarray) or isinstance(img, cv2.cuda_GpuMat):
             self.image_data = img
         elif isinstance(img, _image):
             self.image_data = img.imread().copy()
@@ -35,6 +35,11 @@ class _image(object):
             raise ValueError('unknown image, type:{}, image={} '.format(type(img), img))
 
     def imread(self) -> np.ndarray:
+        self.transform_cpu()
+        return self.image_data
+
+    def download(self) -> cv2.cuda_GpuMat:
+        self.transform_gpu()
         return self.image_data
 
     def clean_image(self):
@@ -52,6 +57,33 @@ class _image(object):
     @property
     def size(self):
         return Size(self.shape[1], self.shape[0])
+
+    def transform_gpu(self):
+        img = self.image_data
+        if isinstance(img, np.ndarray):
+            img = cv2.cuda_GpuMat()
+            img.upload(self.imread())
+            self.imwrite(img)
+        elif isinstance(img, cv2.cuda_GpuMat):
+            pass
+        else:
+            raise TypeError('transform Error, img type={}'.format(type(img)))
+
+    def transform_cpu(self):
+        img = self.image_data
+        if isinstance(img, cv2.cuda_GpuMat):
+            img = img.download()
+            self.imwrite(img)
+        elif isinstance(img, np.ndarray):
+            pass
+        else:
+            raise TypeError('transform Error, img type={}'.format(type(img)))
+
+    def type(self):
+        if isinstance(self.image_data, np.ndarray):
+            return 'cpu'
+        elif isinstance(self.image_data, cv2.cuda_GpuMat):
+            return 'gpu'
 
 
 class image(_image):
@@ -129,6 +161,8 @@ class image(_image):
         data = cv2.imencode('.png', self.imread())
         return data
 
-
-def check_detection_input(im_source, im_search):
-    return image(im_source).imread(), image(im_search).imread()
+    def rgb_2_gray(self):
+        if self.type() == 'cpu':
+            return cv2.cvtColor(self.imread(), cv2.COLOR_BGR2GRAY)
+        elif self.type() == 'gpu':
+            return cv2.cuda.cvtColor(self.download(), cv2.COLOR_BGR2GRAY)

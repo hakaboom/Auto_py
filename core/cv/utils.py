@@ -33,7 +33,7 @@ def read_image(filename: str, flags: int = cv2.IMREAD_COLOR):
     if check_image_valid(img):
         return img
     else:
-        raise BaseException('cv2 decode Error, path:{}, flage={}', filename, flags)
+        raise Exception('cv2 decode Error, path:{}, flage={}', filename, flags)
 
 
 def bytes_2_img(byte) -> np.ndarray:

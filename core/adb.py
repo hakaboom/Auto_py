@@ -264,8 +264,7 @@ class _ADB(object):
         cmds = ['shell'] + split_cmd(cmds)
         return self.start_cmd(cmds)
 
-    def raw_shell(self, cmds: Union[list, str], ensure_unicode: bool = True, skip_error: bool = False) -> Union[
-        bytes, str]:
+    def raw_shell(self, cmds: Union[list, str], ensure_unicode: bool = True, skip_error: bool = False):
         cmds = ['shell'] + split_cmd(cmds)
         stdout = self.cmd(cmds, ensure_unicode=False, skip_error=skip_error)
         if not ensure_unicode:
@@ -525,7 +524,8 @@ class _ADB(object):
             physical display info for dimension and density
 
         """
-        phyDispRE = re.compile('.*PhysicalDisplayInfo{(?P<width>\d+) x (?P<height>\d+), .*, density (?P<density>[\d.]+).*')
+        phyDispRE = re.compile(
+            '.*PhysicalDisplayInfo{(?P<width>\d+) x (?P<height>\d+), .*, density (?P<density>[\d.]+).*')
         out = self.raw_shell('dumpsys display')
         m = phyDispRE.search(out)
         if m:
@@ -559,7 +559,8 @@ class _ADB(object):
             return displayInfo
 
         # gets C{mPhysicalDisplayInfo} values from dumpsys. This is a method to obtain display dimensions and density
-        phyDispRE = re.compile('Physical size: (?P<width>\d+)x(?P<height>\d+).*Physical density: (?P<density>\d+)', re.S)
+        phyDispRE = re.compile('Physical size: (?P<width>\d+)x(?P<height>\d+).*Physical density: (?P<density>\d+)',
+                               re.S)
         m = phyDispRE.search(self.raw_shell('wm size; wm density'))
         if m:
             displayInfo = {}
@@ -619,6 +620,7 @@ class _ADB(object):
 
 class _Device(_ADB):
     """这里会写上一些常用的功能接口"""
+
     def screenshot(self, Rect: Tuple[int, int, int, int] = None):
         """
         adb 截图
