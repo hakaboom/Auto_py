@@ -169,3 +169,7 @@ class image(_image):
             return cv2.cvtColor(self.imread(), cv2.COLOR_BGR2GRAY)
         elif self.type() == 'gpu':
             return cv2.cuda.cvtColor(self.download(), cv2.COLOR_BGR2GRAY)
+
+
+def check_detection_input(im_source, im_search):
+    return image(im_source), image(im_search)
