@@ -4,7 +4,6 @@ import cv2
 from core.utils.coordinate import Rect, Size
 from core.utils.base import auto_increment
 from core.cv.utils import read_image, bgr_2_gray, bytes_2_img
-from core.cv.thresholding import otsu
 import numpy as np
 
 
@@ -143,9 +142,13 @@ class image(_image):
         return image(img[y_min:y_max, x_min:x_max])
 
     def binarization(self):
-        img = self.imread()
-        img = bgr_2_gray(img)
-        return image(otsu(img))
+        gray_img = self.rgb_2_gray()
+        dst = None
+        if self.type() == 'cpu':
+            retval, dst = cv2.threshold(gray_img, 0, 255, cv2.THRESH_OTSU)
+        elif self.type() == 'gpu':
+            retval, dst = cv2.threshold(gray_img.download(), 0, 255, cv2.THRESH_OTSU)
+        return image(dst)
 
     def rectangle(self, rect: Rect):
         """在图像上画出矩形"""
