@@ -11,7 +11,6 @@ from core.Javecap import Javacap
 from core.rotation import Rotation
 from core.utils.base import initLogger, pprint
 from core.cv.base_image import image as Image
-from core.cv.sift import SIFT
 from core.constant import ADB_CAP_REMOTE_PATH
 from loguru import logger
 
@@ -28,7 +27,6 @@ class Android(object):
         self._display_info = {}
         self.tmp_image = Image(path=ADB_CAP_REMOTE_PATH.format(self.adb.get_device_id(decode=True)))
         self.sdk_version = self.adb.sdk_version()
-        self.sift = SIFT()
         # init components
         self.cap_method = cap_method
         self.touch_method = touch_method
