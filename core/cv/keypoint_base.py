@@ -5,9 +5,10 @@ import cv2
 import numpy as np
 from core.cv.utils import create_similar_rect, generate_result
 from core.cv.match_template import match_template
-from core.utils.coordinate import Rect
-from core.cv.base_image import image
+from core.utils.coordinate import Rect, Point, Size
+from core.cv.base_image import IMAGE
 from core.utils.base import pprint
+from loguru import logger
 
 
 class KeypointMatch(object):
@@ -18,7 +19,7 @@ class KeypointMatch(object):
     def __init__(self, threshold=0.8):
         self.threshold = threshold
 
-    def find_sift(self, im_source, im_search, threshold: int = 0.8):
+    def find_best(self, im_source, im_search, threshold: int = 0.8):
         """基于FlannBasedMatcher的SIFT实现"""
         start_time = time.time()
         im_source, im_search = self.check_detection_input(im_source, im_search)
@@ -44,14 +45,14 @@ class KeypointMatch(object):
         else:
             confidence = 0
         best_match = generate_result(rect=rect, confi=confidence)
-        print('[sift]:{Rect}, confidence=(max={max_confidence:.5f},min={min_confidence:.5f}), time={time:.1f}ms'.
-              format(max_confidence=max(confidences), min_confidence=min(confidences),
-                     Rect=rect, time=(time.time() - start_time)*1000))
+        logger.info('[{method_name}]:{Rect}, confidence=(max={max_confidence:.5f},min={min_confidence:.5f}), time={time:.1f}ms',
+                    max_confidence=max(confidences), min_confidence=min(confidences),
+                    Rect=rect, time=(time.time() - start_time)*1000, method_name=self.METHOD_NAME),
         return best_match if confidence > threshold else None
 
     @staticmethod
     def check_detection_input(im_source, im_search):
-        return image(im_source), image(im_search)
+        return IMAGE(im_source), IMAGE(im_search)
 
     def extract_good_points(self, im_source, im_search, kp_sch, kp_src, good, threshold):
         if len(good) == 0:
@@ -59,8 +60,11 @@ class KeypointMatch(object):
             return None
         elif len(good) == 1:
             # 匹配点对为1，可信度赋予设定值，并直接返回:
-            origin_result = self._handle_one_good_points(kp_src, good, threshold)
-            return None
+            origin_result = self._handle_one_good_points(im_source, im_search, kp_src, kp_sch, good)
+            if isinstance(origin_result, dict):
+                return None
+            else:
+                return origin_result
         elif len(good) == 2:
             # 匹配点对为2，根据点对求出目标区域，据此算出可信度：
             origin_result = self._handle_two_good_points(im_source, im_search, kp_src, kp_sch, good)
@@ -89,16 +93,20 @@ class KeypointMatch(object):
         for m, n in matches:
             if m.distance < self.FILTER_RATIO * n.distance:
                 good.append(m)
+        # img5 = cv2.drawMatches(im_search, kp_sch, im_source, kp_src, good, None, flags=2)
+        # cv2.imshow(str(len(good)), img5)
         return kp_sch, kp_src, good
 
-    def _handle_one_good_points(self, kp_src, good, threshold):
+    def _handle_one_good_points(self, im_source, im_search, kp_src, kp_sch, good):
         """sift匹配中只有一对匹配的特征点对的情况."""
-        # 识别中心即为该匹配点位置:
-        middle_point = int(kp_src[good[0].trainIdx].pt[0]), int(kp_src[good[0].trainIdx].pt[1])
-        confidence = self.ONE_POINT_CONFI
-        # 单个特征点对,识别区域无效化:
-        pypts = [middle_point for i in range(4)]
-        return None if confidence > threshold else middle_point
+        # 取出该点在图中的位置
+        sch_point = Point(int(kp_sch[0].pt[0]), int(kp_sch[0].pt[1]))
+        src_point = Point(int(kp_src[good[0].trainIdx].pt[0]), int(kp_src[good[0].trainIdx].pt[1]))
+        # 求出模板原点在匹配图像上的坐标
+        offset_point = src_point - sch_point
+        logger.debug('sch={}, src={}, offset={}', sch_point, src_point, offset_point)
+        rect = Rect.create_by_point_size(offset_point, Size(im_search.shape[1], im_search.shape[0]))
+        return rect
 
     def _handle_two_good_points(self, im_source, im_search, kp_src, kp_sch, good):
         """处理两对特征点的情况."""
@@ -121,7 +129,7 @@ class KeypointMatch(object):
             (kp_src[good[1].trainIdx].pt[1] + kp_src[good[2].trainIdx].pt[1]) / 2)
         return self._two_good_points(pts_sch1, pts_sch2, pts_src1, pts_src2, im_search, im_source)
 
-    def get_keypoints_adn_descriptors(self):
+    def get_keypoints_and_descriptors(self, image):
         keypoints, descriptors = self.detector.detectAndCompute(image, None)
         return keypoints, descriptors
 

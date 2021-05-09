@@ -10,7 +10,7 @@ from core.constant import TOUCH_METHOD, CAP_METHOD, SDK_VERISON_ANDROID10
 from core.Javecap import Javacap
 from core.rotation import Rotation
 from core.utils.base import initLogger, pprint
-from core.cv.base_image import image as Image
+from core.cv.base_image import IMAGE as Image
 from core.constant import ADB_CAP_REMOTE_PATH
 from loguru import logger
 

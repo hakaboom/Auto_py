@@ -4,7 +4,7 @@ import json
 import pybase64
 import cv2
 import numpy as np
-from core.cv.base_image import image
+from core.cv.base_image import IMAGE
 from core.utils.base import pprint
 from core.utils.coordinate import Rect, Point
 
@@ -19,7 +19,7 @@ class jsonEncoder(json.JSONEncoder):
 
 
 def encodeImage(img):
-    imgRaw = image(img).imread()
+    imgRaw = IMAGE(img).imread()
     imgBase64 = cv2.imencode('.png', imgRaw)[1]
     image_data = pybase64.b64encode(imgBase64)
     return image_data

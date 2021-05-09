@@ -47,15 +47,14 @@ class _image(object):
 
     @property
     def shape(self):
-        return self.imread().shape[:2]
+        if self.type() == 'cpu':
+            return self.imread().shape[:2]
+        elif self.type() == 'gpu':
+            return self.download().size()[::-1]
 
     @property
     def path(self):
         return self.tmp_path
-
-    @property
-    def size(self):
-        return Size(self.shape[1], self.shape[0])
 
     def transform_gpu(self):
         img = self.image_data
@@ -85,7 +84,7 @@ class _image(object):
             return 'gpu'
 
 
-class image(_image):
+class IMAGE(_image):
     SHOW_INDEX = auto_increment()
 
     def imshow(self, title: str = None):
@@ -135,11 +134,11 @@ class image(_image):
         else:
             raise ValueError('unknown rect: type={}, rect={}'.format(type(rect), rect))
         if not Rect(0, 0, width, height).contains(rect):
-            raise OverflowError('Rect不能超出屏幕 {}'.format(rect))
+            raise OverflowError('Rect不能超出屏幕 rect={}, tl={}, br={}'.format(rect, rect.tl, rect.br))
         # 获取在图像中的实际有效区域：
         x_min, y_min = int(rect.tl.x), int(rect.tl.y)
         x_max, y_max = int(rect.br.x), int(rect.br.y)
-        return image(img[y_min:y_max, x_min:x_max])
+        return IMAGE(img[y_min:y_max, x_min:x_max])
 
     def binarization(self):
         gray_img = self.rgb_2_gray()
@@ -148,7 +147,7 @@ class image(_image):
             retval, dst = cv2.threshold(gray_img, 0, 255, cv2.THRESH_OTSU)
         elif self.type() == 'gpu':
             retval, dst = cv2.threshold(gray_img.download(), 0, 255, cv2.THRESH_OTSU)
-        return image(dst)
+        return IMAGE(dst)
 
     def rectangle(self, rect: Rect):
         """在图像上画出矩形"""
@@ -157,7 +156,12 @@ class image(_image):
         cv2.rectangle(self.imread(), (pt1.x, pt1.y), (pt2.x, pt2.y), (0, 255, 0), 2)
 
     def resize(self, w, h):
-        self.imwrite(cv2.resize(self.imread(), (int(w), int(h))))
+        img = None
+        if self.type() == 'cpu':
+            img = cv2.resize(self.imread(), (int(w), int(h)))
+        elif self.type() == 'gpu':
+            img = cv2.cuda.resize(self.download(), (int(w), int(h)))
+        self.imwrite(img)
         return self
 
     def cv2_to_base64(self):
@@ -172,4 +176,4 @@ class image(_image):
 
 
 def check_detection_input(im_source, im_search):
-    return image(im_source), image(im_search)
+    return IMAGE(im_source), IMAGE(im_search)

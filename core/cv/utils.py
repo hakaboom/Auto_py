@@ -58,14 +58,19 @@ def bgr_2_gray(img):
 def create_similar_rect(x, y, w, h):
     x = [x, x + 1, x - 1]
     y = [y, y + 1, y - 1]
-    w = [w, w + 1, w - 1]
-    h = [h, h + 1, h - 1]
+    # w = [w, w + 1, w - 1]
+    # h = [h, h + 1, h - 1]
     t = []
-    for i in itertools.product(*[range(3) for k in range(4)]):
-        if (i[2] == 2 and i[3] == 1) or (i[2] == 1 and i[3] == 2):
+    # for i in itertools.product(*[range(3) for k in range(4)]):
+    #     if (i[2] == 2 and i[3] == 1) or (i[2] == 1 and i[3] == 2):
+    #         pass
+    #     else:
+    #         t.append(Rect(x=x[i[0]], y=y[i[1]], width=w[i[2]], height=h[i[3]]))
+    for i in itertools.product(*[range(3) for k in range(2)]):
+        if (i[0] == 2 and i[1] == 1) or (i[0] == 1 and i[1] == 2):
             pass
         else:
-            t.append(Rect(x=x[i[0]], y=y[i[1]], width=w[i[2]], height=h[i[3]]))
+            t.append(Rect(x=x[i[0]], y=y[i[1]], width=w, height=h))
     return t
 
 

@@ -4,7 +4,7 @@
 import cv2
 import time
 from core.cv.utils import generate_result
-from core.cv.base_image import image
+from core.cv.base_image import IMAGE
 from core.utils.coordinate import Rect
 
 
@@ -78,7 +78,7 @@ class _match_template(object):
 
     @staticmethod
     def check_detection_input(im_source, im_search):
-        return image(im_source), image(im_search)
+        return IMAGE(im_source), IMAGE(im_search)
 
     @staticmethod
     def cal_rgb_confidence(img_src_rgb, img_sch_rgb):
@@ -104,8 +104,8 @@ class _cuda_match_template(_match_template):
 
     @staticmethod
     def check_detection_input(im_source, im_search):
-        im_source = image(im_source)
-        im_search = image(im_search)
+        im_source = IMAGE(im_source)
+        im_search = IMAGE(im_search)
         im_source.transform_gpu()
         im_search.transform_gpu()
         return im_source, im_search
@@ -141,14 +141,14 @@ else:
 
 
 if __name__ == '__main__':
-    from core.cv.base_image import image
+    from core.cv.base_image import IMAGE
     from core.utils.coordinate import Anchor,  Rect
     Anchor = Anchor(dev={'width': 1920, 'height': 1080},
                     cur={'width': 3400, 'height': 1440, 'left': 260, 'right': 260}, orientation=1)
 
     rect = Rect.create_by_point_size(Anchor.point(0, 0), Anchor.size(1920, 1080))
-    img = image('emulator-5554.png')
-    im_search = image('star.png').resize(62 * 1.33333, 43 * 1.33333)
+    img = IMAGE('emulator-5554.png')
+    im_search = IMAGE('star.png').resize(62 * 1.33333, 43 * 1.33333)
 
     from core.cv.match_template import match_template
 
