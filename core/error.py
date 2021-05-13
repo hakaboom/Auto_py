@@ -19,3 +19,15 @@ class AdbError(Exception):
         # re.findall('device \'(.+?)\' not found', self.stderr)
         return "stdout[%s],stderr[%s]\ncmds[%s]" % (self.stdout, self.stderr, ' '.join(self.cmds))
 
+
+class SurfCudaError(Exception):
+    def __init__(self, image):
+        self.image = image
+
+    def __str__(self):
+        return
+
+
+class CvError(SurfCudaError):
+    def __init__(self, image):
+        self.image = image

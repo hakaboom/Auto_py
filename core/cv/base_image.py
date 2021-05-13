@@ -48,7 +48,7 @@ class _image(object):
     @property
     def shape(self):
         if self.type() == 'cpu':
-            return self.imread().shape[:2]
+            return self.imread().shape[:-1]
         elif self.type() == 'gpu':
             return self.download().size()[::-1]
 
