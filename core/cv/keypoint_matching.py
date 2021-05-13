@@ -17,7 +17,6 @@ class ORB(KeypointMatch):
         super(ORB, self).__init__()
         # 创建ORB实例
         self.detector = cv2.ORB_create(scaleFactor=2)
-        cv2.cuda.ORB_create(scaleFactor=2)
 
     def create_matcher(self):
         # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_feature2d/py_matcher/py_matcher.html#flann-based-matcher
@@ -55,7 +54,64 @@ class SURF(KeypointMatch):
         self.detector = cv2.xfeatures2d.SURF_create(self.HESSIAN_THRESHOLD, upright=self.UPRIGHT)
 
 
-class _CUDA_SURF(KeypointMatch):
+class BRIEF(KeypointMatch):
+    METHOD_NAME = "BRIEF"
+
+    def __init__(self):
+        super(BRIEF, self).__init__()
+        # Initiate FAST detector
+        self.star = cv2.xfeatures2d.StarDetector_create()
+        # Initiate BRIEF extractor
+        self.detector = cv2.xfeatures2d.BriefDescriptorExtractor_create()
+
+    def create_matcher(self):
+        self.matcher = cv2.BFMatcher_create(cv2.NORM_L1)
+
+    def get_keypoints_and_descriptors(self, image):
+        # find the keypoints with STAR
+        kp = self.star.detect(image, None)
+        # compute the descriptors with BRIEF
+        keypoints, descriptors = self.detector.compute(image, kp)
+        return keypoints, descriptors
+
+
+class AKAZE(KeypointMatch):
+    METHOD_NAME = "AKAZE"
+
+    def __init__(self):
+        super(AKAZE, self).__init__()
+        # Initiate AKAZE detector
+        self.detector = cv2.AKAZE_create()
+        # create BFMatcher object:
+        self.matcher = cv2.BFMatcher(cv2.NORM_L1)
+
+
+class _CUDA(object):
+    def get_key_points(self, im_source, im_search):
+        """计算所有特征点,并匹配"""
+        im_source, im_search = im_source.rgb_2_gray(), im_search.rgb_2_gray()
+        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search)
+        kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source)
+        matches = self.match_keypoints(des_sch=des_sch, des_src=des_src)
+        good = []
+        for m, n in matches:
+            if m.distance < self.FILTER_RATIO * n.distance:
+                good.append(m)
+        kp_sch = cv2.cuda_SURF_CUDA.downloadKeypoints(self.detector, kp_sch)
+        kp_src = cv2.cuda_SURF_CUDA.downloadKeypoints(self.detector, kp_src)
+        # print('surf:kp_sch={}，kp_src={}, good={}'.format(str(len(kp_sch)), str(len(kp_src)), str(len(good))))
+        # cv2.namedWindow(str(len(kp_src) + 3), cv2.WINDOW_KEEPRATIO)
+        # cv2.imshow(str(len(kp_src)+1), cv2.drawKeypoints(im_source.download(), kp_src, im_source.download(),
+        #                                                  color=(255, 0, 255)))
+        # cv2.imshow(str(len(kp_src)+2), cv2.drawKeypoints(im_search.download(), kp_sch, im_search.download(),
+        #                                                  color=(255, 0, 255)))
+        # cv2.imshow(str(len(kp_src)+3), cv2.drawMatches(im_search.download(), kp_sch, im_source.download(), kp_src,
+        #                                            good, None, flags=2))
+        # cv2.waitKey(0)
+        return kp_sch, kp_src, good
+
+
+class _CUDA_SURF(_CUDA, KeypointMatch):
     # https://docs.opencv.org/master/db/d06/classcv_1_1cuda_1_1SURF__CUDA.html
     METHOD_NAME = 'CUDA_SURF'
     # 方向不变性:0检测/1不检测
@@ -75,20 +131,19 @@ class _CUDA_SURF(KeypointMatch):
         im_search = IMAGE(im_search)
         im_source.transform_gpu()
         im_search.transform_gpu()
-        im_source, im_search = self.check_image(im_source, im_search)
+        im_source, im_search = self.check_image_size(im_source, im_search)
         return im_source, im_search
 
-    def check_image(self, im_source, im_search):
+    def check_image_size(self, im_source, im_search):
         try:
-            im_source, im_search = IMAGE(im_source), IMAGE(im_search)
-            self._check_image(im_source)
-            self._check_image(im_search)
+            self._check_image_size(im_source)
+            self._check_image_size(im_search)
         except SurfCudaError as err:
-            logger.error('surf ')
+            logger.error('image size is to small: {}', err)
             return None, None
         return im_source, im_search
 
-    def _check_image(self, image):
+    def _check_image_size(self, image):
         # https://stackoverflow.com/questions/42492060/surf-cuda-error-while-computing-descriptors-and-keypoints
         # https://github.com/opencv/opencv_contrib/blob/master/modules/xfeatures2d/src/surf.cuda.cpp#L151
         # SURF匹配特征点时,无法处理长宽太小的图片
@@ -106,56 +161,11 @@ class _CUDA_SURF(KeypointMatch):
         min_margin = ((calc_size((self.detector.nOctaves - 1), 2) >> 1) >> (self.detector.nOctaves - 1)) + 1
 
         if image.shape[0] - min_size < 0 or image.shape[1] - min_size < 0:
-            raise SurfCudaError(image, 'min_size', min_size)
-
+            raise SurfCudaError(image)
         if layer_height - 2 * min_margin < 0 or layer_width - 2 * min_margin < 0:
-            raise SurfCudaError(image, 'min_margin', min_margin)
+            raise SurfCudaError(image)
 
     def get_keypoints_and_descriptors(self, image):
         """获取图像特征点和描述符."""
         keypoints, descriptors = self.detector.detectWithDescriptors(image, None)
-        return keypoints, descriptors
-
-    def get_key_points(self, im_source, im_search):
-        """计算所有特征点,并匹配"""
-        im_source, im_search = im_source.rgb_2_gray(), im_search.rgb_2_gray()
-        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search)
-        kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source)
-        matches = self.match_keypoints(des_sch=des_sch, des_src=des_src)
-        good = []
-        for m, n in matches:
-            if m.distance < self.FILTER_RATIO * n.distance:
-                good.append(m)
-        kp_sch = cv2.cuda_SURF_CUDA.downloadKeypoints(self.detector, kp_sch)
-        kp_src = cv2.cuda_SURF_CUDA.downloadKeypoints(self.detector, kp_src)
-        print('surf:kp_sch={}，kp_src={}, good={}'.format(str(len(kp_sch)), str(len(kp_src)), str(len(good))))
-        # cv2.namedWindow(str(len(kp_src) + 3), cv2.WINDOW_KEEPRATIO)
-        # cv2.imshow(str(len(kp_src)+1), cv2.drawKeypoints(im_source.download(), kp_src, im_source.download(),
-        #                                                  color=(255, 0, 255)))
-        # cv2.imshow(str(len(kp_src)+2), cv2.drawKeypoints(im_search.download(), kp_sch, im_search.download(),
-        #                                                  color=(255, 0, 255)))
-        # cv2.imshow(str(len(kp_src)+3), cv2.drawMatches(im_search.download(), kp_sch, im_source.download(), kp_src,
-        #                                            good, None, flags=2))
-        # cv2.waitKey(0)
-        return kp_sch, kp_src, good
-
-
-class BRIEF(KeypointMatch):
-    METHOD_NAME = "BRIEF"
-
-    def __init__(self):
-        super(BRIEF, self).__init__()
-        # Initiate FAST detector
-        self.star = cv2.xfeatures2d.StarDetector_create()
-        # Initiate BRIEF extractor
-        self.detector = cv2.xfeatures2d.BriefDescriptorExtractor_create()
-
-    def create_matcher(self):
-        self.matcher = cv2.BFMatcher_create(cv2.NORM_L1)
-
-    def get_keypoints_and_descriptors(self, image):
-        # find the keypoints with STAR
-        kp = self.star.detect(image, None)
-        # compute the descriptors with BRIEF
-        keypoints, descriptors = self.detector.compute(image, kp)
         return keypoints, descriptors

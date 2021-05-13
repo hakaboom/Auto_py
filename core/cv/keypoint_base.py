@@ -29,8 +29,9 @@ class KeypointMatch(object):
         search_params = dict(checks=50)
         self.matcher = cv2.FlannBasedMatcher(index_params, search_params)
 
-    def find_best(self, im_source, im_search, threshold = 0.8):
+    def find_best(self, im_source, im_search, threshold=None):
         """基于FlannBasedMatcher的SIFT实现"""
+        threshold = threshold or self.threshold
         start_time = time.time()
         im_source, im_search = self.check_detection_input(im_source, im_search)
         if not im_source or not im_search:
@@ -67,26 +68,15 @@ class KeypointMatch(object):
         return IMAGE(im_source), IMAGE(im_search)
 
     def extract_good_points(self, im_source, im_search, kp_sch, kp_src, good, threshold):
-        if len(good) == 0:
-            # 没有匹配点,直接返回None
+        if len(good) in [0, 1]:
+            # origin_result = self._handle_one_good_points(im_source, im_search, kp_src, kp_sch, good)
             return None
-        elif len(good) == 1:
-            # 匹配点对为1，可信度赋予设定值，并直接返回:
-            origin_result = self._handle_one_good_points(im_source, im_search, kp_src, kp_sch, good)
-            if isinstance(origin_result, dict):
-                return None
+        elif len(good)in [2, 3]:
+            if len(good) == 2:
+                # 匹配点对为2，根据点对求出目标区域，据此算出可信度：
+                origin_result = self._handle_two_good_points(im_source, im_search, kp_src, kp_sch, good)
             else:
-                return origin_result
-        elif len(good) == 2:
-            # 匹配点对为2，根据点对求出目标区域，据此算出可信度：
-            origin_result = self._handle_two_good_points(im_source, im_search, kp_src, kp_sch, good)
-            if isinstance(origin_result, dict):
-                return None
-            else:
-                return origin_result
-        elif len(good) == 3:
-            # 匹配点对为3，取出点对，求出目标区域，据此算出可信度：
-            origin_result = self._handle_three_good_points(im_source, im_search, kp_sch, kp_src, good)
+                origin_result = self._handle_three_good_points(im_source, im_search, kp_sch, kp_src, good)
             if isinstance(origin_result, dict):
                 return None
             else:
@@ -105,9 +95,8 @@ class KeypointMatch(object):
         for m, n in matches:
             if m.distance < self.FILTER_RATIO * n.distance:
                 good.append(m)
-        print('{}:kp_sch={}，kp_src={}, good={}'.format(self.METHOD_NAME,
-                                                       str(len(kp_sch)), str(len(kp_src)), str(len(good))))
-        # cv2.namedWindow(str(len(good)), cv2.WINDOW_KEEPRATIO)
+        print('{}:kp_sch={}，kp_src={}, good={}'.format(self.METHOD_NAME, str(len(kp_sch)), str(len(kp_src)), str(len(good))))
+        # cv2.namedWindow(str(len(good) + 1), cv2.WINDOW_KEEPRATIO)
         # cv2.imshow(str(len(good)), cv2.drawMatches(im_search, kp_sch, im_source, kp_src, good, None, flags=2))
         # cv2.imshow(str(len(good) + 1), cv2.drawKeypoints(im_source, kp_src, im_source, color=(255, 0, 255)))
         # cv2.imshow(str(len(good) + 2), cv2.drawKeypoints(im_search, kp_sch, im_search, color=(255, 0, 255)))
@@ -180,15 +169,16 @@ class KeypointMatch(object):
         # 从good中间筛选出更精确的点(假设good中大部分点为正确的，由ratio=0.7保障)
         selected = [v for k, v in enumerate(good) if matches_mask[k]]
         # 针对所有的selected点再次计算出更精确的转化矩阵M来
-        # sch_pts, img_pts = np.float32([kp_sch[m.queryIdx].pt for m in selected]).reshape(
-        #     -1, 1, 2), np.float32([kp_src[m.trainIdx].pt for m in selected]).reshape(-1, 1, 2)
-        # M, mask = self._find_homography(sch_pts, img_pts)
+        sch_pts, img_pts = np.float32([kp_sch[m.queryIdx].pt for m in selected]).reshape(
+            -1, 1, 2), np.float32([kp_src[m.trainIdx].pt for m in selected]).reshape(-1, 1, 2)
+        M, mask = self._find_homography(sch_pts, img_pts)
         # 计算四个角矩阵变换后的坐标，也就是在大图中的目标区域的顶点坐标:
         h, w = im_search.shape[:2]
         h_s, w_s = im_source.shape[:2]
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
         dst = cv2.perspectiveTransform(pts, M)
         # trans numpy arrary to python list: [(a, b), (a1, b1), ...]
+
         def cal_rect_pts(dst):
             return [tuple(npt[0]) for npt in np.rint(dst).astype(np.float).tolist()]
 
