@@ -16,10 +16,9 @@ python3.8
 - [x] 行为树
 
 ## 待完成事项
-- [ ]  编译opencv-cudn
+- [ ]  surf_cuda
+- [ ]  ORB_cuda
 
-  
-~~opencv使用yolov4识别 !编译不出gpu版本,CPU识别0.5秒一次,索性不要了~~
   
 ## 总结
 - 目前截图的几种方式
