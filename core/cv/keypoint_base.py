@@ -24,9 +24,9 @@ class KeypointMatch(object):
         self.create_matcher()
 
     def create_matcher(self):
-        index_params = dict(algorithm=self.FLANN_INDEX_KDTREE, trees=5)
+        index_params = {'algorithm': self.FLANN_INDEX_KDTREE, 'tree': 5}
         # 指定递归遍历的次数. 值越高结果越准确，但是消耗的时间也越多
-        search_params = dict(checks=50)
+        search_params = {'checks': 50}
         self.matcher = cv2.FlannBasedMatcher(index_params, search_params)
 
     def find_best(self, im_source, im_search, threshold=None):
@@ -39,7 +39,7 @@ class KeypointMatch(object):
         # 第一步: 获取特征点集并匹配出特征点对
         kp_sch, kp_src, good = self.get_key_points(im_search=im_search, im_source=im_source)
         # 第二步：根据匹配点对(good),提取出来识别区域:
-        rect = self.extract_good_points(im_source, im_search, kp_sch, kp_src, good, threshold)
+        rect = self.extract_good_points(im_source, im_search, kp_sch, kp_src, good)
         if not rect:
             return None
         # 第三步,通过识别矩阵周围+-1像素的矩阵,求出结果可信度，并且返回最大精准度的范围
@@ -58,20 +58,21 @@ class KeypointMatch(object):
         else:
             confidence = 0
         best_match = generate_result(rect=rect, confi=confidence)
-        logger.info('[{method_name}]:{Rect}, confidence=(max={max_confidence:.5f},min={min_confidence:.5f}), time={time:.1f}ms',
+        logger.info('[{method_name}]:{Rect}, confidence=(max={max_confidence:.5f},min={min_confidence:.5f}), '
+                    'time={time:.1f}ms',
                     max_confidence=max(confidences), min_confidence=min(confidences),
-                    Rect=rect, time=(time.time() - start_time)*1000, method_name=self.METHOD_NAME),
+                    Rect=rect, time=(time.time() - start_time) * 1000, method_name=self.METHOD_NAME),
         return best_match if confidence > threshold else None
 
     @staticmethod
     def check_detection_input(im_source, im_search):
         return IMAGE(im_source), IMAGE(im_search)
 
-    def extract_good_points(self, im_source, im_search, kp_sch, kp_src, good, threshold):
+    def extract_good_points(self, im_source, im_search, kp_sch, kp_src, good):
         if len(good) in [0, 1]:
             # origin_result = self._handle_one_good_points(im_source, im_search, kp_src, kp_sch, good)
             return None
-        elif len(good)in [2, 3]:
+        elif len(good) in [2, 3]:
             if len(good) == 2:
                 # 匹配点对为2，根据点对求出目标区域，据此算出可信度：
                 origin_result = self._handle_two_good_points(im_source, im_search, kp_src, kp_sch, good)
@@ -95,7 +96,7 @@ class KeypointMatch(object):
         for m, n in matches:
             if m.distance < self.FILTER_RATIO * n.distance:
                 good.append(m)
-        print('{}:kp_sch={}，kp_src={}, good={}'.format(self.METHOD_NAME, str(len(kp_sch)), str(len(kp_src)), str(len(good))))
+        # print('{}:kp_sch={}，kp_src={}, good={}'.format(self.METHOD_NAME, str(len(kp_sch)), str(len(kp_src)), str(len(good))))
         # cv2.namedWindow(str(len(good) + 1), cv2.WINDOW_KEEPRATIO)
         # cv2.imshow(str(len(good)), cv2.drawMatches(im_search, kp_sch, im_source, kp_src, good, None, flags=2))
         # cv2.imshow(str(len(good) + 1), cv2.drawKeypoints(im_source, kp_src, im_source, color=(255, 0, 255)))
@@ -177,6 +178,7 @@ class KeypointMatch(object):
         h_s, w_s = im_source.shape[:2]
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
         dst = cv2.perspectiveTransform(pts, M)
+
         # trans numpy arrary to python list: [(a, b), (a1, b1), ...]
 
         def cal_rect_pts(dst):
@@ -215,7 +217,7 @@ class KeypointMatch(object):
         if pts_sch1[0] == pts_sch2[0] or pts_sch1[1] == pts_sch2[1] or pts_src1[0] == pts_src2[0] or pts_src1[1] == \
                 pts_src2[1]:
             confidence = self.ONE_POINT_CONFI
-            return dict(result=middle_point, rectangle=pypts, confidence=confidence)
+            return {'result': middle_point, 'rectangle': pypts, 'confidence': confidence}
         # 计算x,y轴的缩放比例：x_scale、y_scale，从middle点扩张出目标区域:(注意整数计算要转成浮点数结果!)
         h, w = im_search.shape[:2]
         h_s, w_s = im_source.shape[:2]
@@ -242,3 +244,27 @@ class KeypointMatch(object):
             pypts.append(tuple(npt[0]))
         return Rect(x=x_min, y=y_min, width=(x_max - x_min), height=(y_max - y_min))
 
+
+if __name__ == '__main__':
+    from core.cv.base_image import IMAGE
+    from core.cv.keypoint_matching import SIFT, SURF, ORB, BRIEF, AKAZE
+    from core.cv.match_template import match_template
+
+    sift = SIFT()
+    surf = SURF()
+    orb = ORB()
+    brief = BRIEF()
+    match = match_template()
+    akaze = AKAZE()
+    im_search = IMAGE('./core/cv/test_image/test2.png')
+    im_source = IMAGE('./core/cv/test_image/test1.png')
+    # print(im_source.shape, im_search.shape)
+    for i in range(1):
+        # a = surf.find_best(im_search=im_search, im_source=im_source)
+        # b = sift.find_best(im_search=im_search, im_source=im_source)
+        # c = orb.find_best(im_search=im_search, im_source=im_source)
+        # d = brief.find_best(im_search=im_search, im_source=im_source)
+        # e = match.find_template(im_search=im_search, im_source=im_source)
+        f = akaze.find_best(im_search=im_search, im_source=im_source)
+        # im_source.crop_image(a["rect"]).imshow()
+        # cv2.waitKey(0)

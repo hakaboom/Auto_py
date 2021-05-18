@@ -20,11 +20,13 @@ class ORB(KeypointMatch):
 
     def create_matcher(self):
         # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_feature2d/py_matcher/py_matcher.html#flann-based-matcher
-        index_params = dict(algorithm=self.FLANN_INDEX_LSH,
-                            table_number=6,  # 12
-                            key_size=12,  # 20
-                            multi_probe_level=1)  # 2
-        search_params = dict(checks=50)
+        index_params = {
+            'algorithm': self.FLANN_INDEX_LSH,
+            'table_number': 6,  # 12
+            'key_size': 12,  # 20
+            'multi_probe_level': 1,  # 2
+        }
+        search_params = {'checks': 50}
         self.matcher = cv2.FlannBasedMatcher(index_params, search_params)
 
 
@@ -39,7 +41,7 @@ class SIFT(KeypointMatch):
         self.detector = cv2.SIFT_create(edgeThreshold=10)
 
 
-class SURF(KeypointMatch):
+class _SURF(KeypointMatch):
     # https://docs.opencv.org/master/d5/df7/classcv_1_1xfeatures2d_1_1SURF.html
     METHOD_NAME = "SURF"
     # 方向不变性:0检测/1不检测
@@ -50,7 +52,7 @@ class SURF(KeypointMatch):
     FLANN_INDEX_KDTREE = 0
 
     def __init__(self):
-        super(SURF, self).__init__()
+        super(_SURF, self).__init__()
         self.detector = cv2.xfeatures2d.SURF_create(self.HESSIAN_THRESHOLD, upright=self.UPRIGHT)
 
 
@@ -169,3 +171,11 @@ class _CUDA_SURF(_CUDA, KeypointMatch):
         """获取图像特征点和描述符."""
         keypoints, descriptors = self.detector.detectWithDescriptors(image, None)
         return keypoints, descriptors
+
+
+if cv2.cuda.getCudaEnabledDeviceCount() > 0:
+    class SURF(_CUDA_SURF):
+        pass
+else:
+    class SURF(_SURF):
+        pass

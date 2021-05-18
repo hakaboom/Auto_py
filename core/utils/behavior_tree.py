@@ -135,7 +135,7 @@ class Sequence(object):
 
     def add_scene(self, scene):
         if isinstance(scene, Scene):
-            self.scenes.append(dict(name=get_varible_name(scene), scene=scene))
+            self.scenes.append({'name': get_varible_name(scene), 'scene': scene})
         else:
             raise ValueError('{} is not Scene'.format(scene))
 

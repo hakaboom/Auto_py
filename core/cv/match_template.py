@@ -6,6 +6,7 @@ import time
 from core.cv.utils import generate_result
 from core.cv.base_image import IMAGE
 from core.utils.coordinate import Rect
+from loguru import logger
 
 
 class _match_template(object):
@@ -34,7 +35,7 @@ class _match_template(object):
             return None
         x, y = max_loc
         rect = Rect(x=x, y=y, width=w, height=h)
-        print('[tpl]{Rect}, confidence={confidence}, time={time:.2f}'.format(confidence=confidence, Rect=rect,
+        logger.info('[tpl]{Rect}, confidence={confidence}, time={time:.2f}'.format(confidence=confidence, Rect=rect,
                                                                              time=(time.time() - start) * 1000))
         return generate_result(rect, confidence)
 
