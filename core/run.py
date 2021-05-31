@@ -55,7 +55,7 @@ class Android(object):
             img_data = self.adb.screenshot()
         # 图片写入到缓存中
         self.tmp_image.imwrite(img_data)
-        logger.info("screenshot time={:.2f}ms,size=({},{})", (time.time() - stamp)*1000, *self.tmp_image.shape)
+        logger.info("screenshot time={:.2f}ms,size=({},{})", (time.time() - stamp) * 1000, *self.tmp_image.size)
         return self.tmp_image
 
     def down(self, x: int, y: int, index: int = 0, pressure: int = 50):

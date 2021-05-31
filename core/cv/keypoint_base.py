@@ -29,7 +29,7 @@ class KeypointMatch(object):
         search_params = {'checks': 50}
         self.matcher = cv2.FlannBasedMatcher(index_params, search_params)
 
-    def find_best(self, im_source, im_search, threshold=None):
+    def find_best(self, im_source, im_search, threshold=0.8):
         """基于FlannBasedMatcher的SIFT实现"""
         threshold = threshold or self.threshold
         start_time = time.time()
@@ -45,7 +45,7 @@ class KeypointMatch(object):
         # 第三步,通过识别矩阵周围+-1像素的矩阵,求出结果可信度，并且返回最大精准度的范围
         confidences = []
         similar_rect = create_similar_rect(rect.x, rect.y, rect.width, rect.height)
-        h, w = im_search.shape[:2]
+        h, w = im_search.size
         for i in similar_rect:
             # cv2.matchTemplate 目标和模板长宽不能一大一小
             target_img = im_source.crop_image(i)
@@ -174,8 +174,8 @@ class KeypointMatch(object):
             -1, 1, 2), np.float32([kp_src[m.trainIdx].pt for m in selected]).reshape(-1, 1, 2)
         M, mask = self._find_homography(sch_pts, img_pts)
         # 计算四个角矩阵变换后的坐标，也就是在大图中的目标区域的顶点坐标:
-        h, w = im_search.shape[:2]
-        h_s, w_s = im_source.shape[:2]
+        h, w = im_search.size[:2]
+        h_s, w_s = im_source.size[:2]
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
         dst = cv2.perspectiveTransform(pts, M)
 
@@ -219,8 +219,8 @@ class KeypointMatch(object):
             confidence = self.ONE_POINT_CONFI
             return {'result': middle_point, 'rectangle': pypts, 'confidence': confidence}
         # 计算x,y轴的缩放比例：x_scale、y_scale，从middle点扩张出目标区域:(注意整数计算要转成浮点数结果!)
-        h, w = im_search.shape[:2]
-        h_s, w_s = im_source.shape[:2]
+        h, w = im_search.size[:2]
+        h_s, w_s = im_source.size[:2]
         x_scale = abs(1.0 * (pts_src2[0] - pts_src1[0]) / (pts_sch2[0] - pts_sch1[0]))
         y_scale = abs(1.0 * (pts_src2[1] - pts_src1[1]) / (pts_sch2[1] - pts_sch1[1]))
         # 得到scale后需要对middle_point进行校正，并非特征点中点，而是映射矩阵的中点。
@@ -255,16 +255,16 @@ if __name__ == '__main__':
     orb = ORB()
     brief = BRIEF()
     match = match_template()
-    akaze = AKAZE()
+    # akaze = AKAZE()
     im_search = IMAGE('./core/cv/test_image/test2.png')
     im_source = IMAGE('./core/cv/test_image/test1.png')
     # print(im_source.shape, im_search.shape)
     for i in range(1):
-        # a = surf.find_best(im_search=im_search, im_source=im_source)
+        a = surf.find_best(im_search=im_search, im_source=im_source)
         # b = sift.find_best(im_search=im_search, im_source=im_source)
         # c = orb.find_best(im_search=im_search, im_source=im_source)
         # d = brief.find_best(im_search=im_search, im_source=im_source)
         # e = match.find_template(im_search=im_search, im_source=im_source)
-        f = akaze.find_best(im_search=im_search, im_source=im_source)
+        # f = akaze.find_best(im_search=im_search, im_source=im_source)
         # im_source.crop_image(a["rect"]).imshow()
         # cv2.waitKey(0)

@@ -48,6 +48,13 @@ class _image(object):
     @property
     def shape(self):
         if self.type() == 'cpu':
+            return self.imread().shape
+        elif self.type() == 'gpu':
+            return self.download().size()[::-1] + (self.download().channels(),)
+
+    @property
+    def size(self):
+        if self.type() == 'cpu':
             return self.imread().shape[:-1]
         elif self.type() == 'gpu':
             return self.download().size()[::-1]
@@ -56,7 +63,7 @@ class _image(object):
     def path(self):
         return self.tmp_path
 
-    def transform_gpu(self):
+    def transform_gpu(self) -> None:
         img = self.image_data
         if isinstance(img, np.ndarray):
             img = cv2.cuda_GpuMat()
@@ -67,7 +74,7 @@ class _image(object):
         else:
             raise TypeError('transform Error, img type={}'.format(type(img)))
 
-    def transform_cpu(self):
+    def transform_cpu(self) -> None:
         img = self.image_data
         if isinstance(img, cv2.cuda_GpuMat):
             img = img.download()
@@ -126,7 +133,7 @@ class IMAGE(_image):
     def crop_image(self, rect):
         """区域范围截图"""
         img = self.imread()
-        height, width = self.shape
+        height, width = self.size
         if isinstance(rect, (list, tuple)) and len(rect) == 4:
             rect = Rect(*rect)
         elif isinstance(rect, Rect):
@@ -168,11 +175,14 @@ class IMAGE(_image):
         data = cv2.imencode('.png', self.imread())
         return data
 
-    def rgb_2_gray(self):
+    def cvtColor(self, dst):
         if self.type() == 'cpu':
-            return cv2.cvtColor(self.imread(), cv2.COLOR_BGR2GRAY)
+            return cv2.cvtColor(self.imread(), dst)
         elif self.type() == 'gpu':
-            return cv2.cuda.cvtColor(self.download(), cv2.COLOR_BGR2GRAY)
+            return cv2.cuda.cvtColor(self.download(), dst)
+
+    def rgb_2_gray(self):
+        return self.cvtColor(cv2.COLOR_BGR2GRAY)
 
 
 def check_detection_input(im_source, im_search):

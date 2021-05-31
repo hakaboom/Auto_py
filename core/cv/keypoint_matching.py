@@ -16,7 +16,7 @@ class ORB(KeypointMatch):
     def __init__(self):
         super(ORB, self).__init__()
         # 创建ORB实例
-        self.detector = cv2.ORB_create(scaleFactor=2)
+        self.detector = cv2.ORB_create(nfeatures=400)
 
     def create_matcher(self):
         # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_feature2d/py_matcher/py_matcher.html#flann-based-matcher
@@ -28,6 +28,19 @@ class ORB(KeypointMatch):
         }
         search_params = {'checks': 50}
         self.matcher = cv2.FlannBasedMatcher(index_params, search_params)
+
+    def get_key_points(self, im_source, im_search):
+        """计算所有特征点,并匹配"""
+        im_source, im_search = im_source.imread(), im_search.imread()
+        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search)
+        kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source)
+        matches = self.match_keypoints(des_sch=des_sch, des_src=des_src)
+        good = []
+        for v in matches:
+            if len(v) == 2:
+                if v[0].distance < self.FILTER_RATIO * v[1].distance:
+                    good.append(v[0])
+        return kp_sch, kp_src, good
 
 
 class SIFT(KeypointMatch):
@@ -101,7 +114,7 @@ class _CUDA(object):
                 good.append(m)
         kp_sch = cv2.cuda_SURF_CUDA.downloadKeypoints(self.detector, kp_sch)
         kp_src = cv2.cuda_SURF_CUDA.downloadKeypoints(self.detector, kp_src)
-        # print('surf:kp_sch={}，kp_src={}, good={}'.format(str(len(kp_sch)), str(len(kp_src)), str(len(good))))
+        # print('{}:kp_sch={}，kp_src={}, good={}'.format(self.METHOD_NAME, str(len(kp_sch)), str(len(kp_src)), str(len(good))))
         # cv2.namedWindow(str(len(kp_src) + 3), cv2.WINDOW_KEEPRATIO)
         # cv2.imshow(str(len(kp_src)+1), cv2.drawKeypoints(im_source.download(), kp_src, im_source.download(),
         #                                                  color=(255, 0, 255)))
@@ -116,8 +129,8 @@ class _CUDA(object):
 class _CUDA_SURF(_CUDA, KeypointMatch):
     # https://docs.opencv.org/master/db/d06/classcv_1_1cuda_1_1SURF__CUDA.html
     METHOD_NAME = 'CUDA_SURF'
-    # 方向不变性:0检测/1不检测
-    UPRIGHT = 0
+    # 方向不变性:True检测/False不检测
+    UPRIGHT = False
     # 检测器仅保留其hessian大于hessianThreshold的要素,值越大,获得的关键点就越少
     HESSIAN_THRESHOLD = 400
     # SURF识别特征点匹配:
@@ -125,7 +138,8 @@ class _CUDA_SURF(_CUDA, KeypointMatch):
 
     def __init__(self):
         super(_CUDA_SURF, self).__init__()
-        self.detector = cv2.cuda.SURF_CUDA_create(self.HESSIAN_THRESHOLD)
+        self.detector = cv2.cuda.SURF_CUDA_create(self.HESSIAN_THRESHOLD, _extended=True, _upright=self.UPRIGHT,
+                                                  _nOctaveLayers=4)
         self.matcher = cv2.cuda.DescriptorMatcher_createBFMatcher(cv2.NORM_L2)
 
     def check_detection_input(self, im_source, im_search):
@@ -158,11 +172,11 @@ class _CUDA_SURF(_CUDA, KeypointMatch):
             return (HAAR_SIZE0 + HAAR_SIZE_INC * layer) << octave
 
         min_size = int(calc_size(self.detector.nOctaves - 1, 0))
-        layer_height = image.shape[0] >> (self.detector.nOctaves - 1)
-        layer_width = image.shape[1] >> (self.detector.nOctaves - 1)
+        layer_height = image.size[0] >> (self.detector.nOctaves - 1)
+        layer_width = image.size[1] >> (self.detector.nOctaves - 1)
         min_margin = ((calc_size((self.detector.nOctaves - 1), 2) >> 1) >> (self.detector.nOctaves - 1)) + 1
 
-        if image.shape[0] - min_size < 0 or image.shape[1] - min_size < 0:
+        if image.size[0] - min_size < 0 or image.size[1] - min_size < 0:
             raise SurfCudaError(image)
         if layer_height - 2 * min_margin < 0 or layer_width - 2 * min_margin < 0:
             raise SurfCudaError(image)

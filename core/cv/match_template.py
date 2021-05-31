@@ -26,7 +26,7 @@ class _match_template(object):
         result = self._get_template_result_matrix(im_source, im_search)
         # 找到最佳匹配项
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-        h, w = im_search.shape
+        h, w = im_search.size
         # 求可信度
         img_crop = im_source.crop_image(Rect(max_loc[0], max_loc[1], w, h))
         confidence = self.cal_rgb_confidence(img_crop, im_search)
@@ -53,7 +53,7 @@ class _match_template(object):
         # 模板匹配取得矩阵
         res = self._get_template_result_matrix(im_source, im_search)
         result = []
-        h, w = im_search.shape
+        h, w = im_search.size
         while True:
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
             img_crop = im_source.crop_image(Rect(max_loc[0], max_loc[1], w, h))

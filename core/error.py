@@ -25,7 +25,7 @@ class SurfCudaError(Exception):
         self.image = image
 
     def __str__(self):
-        return '{width}x{height}'.format(width=self.image.shape[1], height=self.image.shape[0])
+        return '{width}x{height}'.format(width=self.image.size[1], height=self.image.size[0])
 
 
 class CvError(SurfCudaError):

@@ -17,7 +17,3 @@ from core.run import Android
 #     if cv2.waitKey(25) & 0xFF == ord('q'):
 #         cv2.destroyAllWindows()
 #         exit(0)
-
-
-from core.utils.behavior_tree import Blackboard, Sequence
-
