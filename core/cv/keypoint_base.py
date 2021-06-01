@@ -48,9 +48,12 @@ class KeypointMatch(object):
         h, w = im_search.size
         for i in similar_rect:
             # cv2.matchTemplate 目标和模板长宽不能一大一小
-            target_img = im_source.crop_image(i)
-            target_img.resize(w, h)
-            confidences.append(self._cal_sift_confidence(resize_img=target_img, im_search=im_search))
+            try:
+                target_img = im_source.crop_image(i)
+                target_img.resize(w, h)
+                confidences.append(self._cal_confidence(resize_img=target_img, im_search=im_search))
+            except:
+                pass
         # 提取最大值
         if confidences:
             confidence = max(confidences)
@@ -96,7 +99,8 @@ class KeypointMatch(object):
         for m, n in matches:
             if m.distance < self.FILTER_RATIO * n.distance:
                 good.append(m)
-        # print('{}:kp_sch={}，kp_src={}, good={}'.format(self.METHOD_NAME, str(len(kp_sch)), str(len(kp_src)), str(len(good))))
+        # print('{}:kp_sch={}，kp_src={}, good={}'.format(self.METHOD_NAME,
+        # str(len(kp_sch)), str(len(kp_src)), str(len(good))))
         # cv2.namedWindow(str(len(good) + 1), cv2.WINDOW_KEEPRATIO)
         # cv2.imshow(str(len(good)), cv2.drawMatches(im_search, kp_sch, im_source, kp_src, good, None, flags=2))
         # cv2.imshow(str(len(good) + 1), cv2.drawKeypoints(im_source, kp_src, im_source, color=(255, 0, 255)))
@@ -111,17 +115,17 @@ class KeypointMatch(object):
     def match_keypoints(self, des_sch, des_src):
         """Match descriptors (特征值匹配)."""
         # 匹配两个图片中的特征点集，k=2表示每个特征点取出2个最匹配的对应点:
-        return self.matcher.knnMatch(des_sch, des_src, k=2)
+        return self.matcher.knnMatch(des_sch, des_src, 2)
 
     def _handle_one_good_points(self, im_source, im_search, kp_src, kp_sch, good):
         """sift匹配中只有一对匹配的特征点对的情况."""
+        """此方法当前废弃"""
         # 取出该点在图中的位置
         sch_point = Point(int(kp_sch[0].pt[0]), int(kp_sch[0].pt[1]))
         src_point = Point(int(kp_src[good[0].trainIdx].pt[0]), int(kp_src[good[0].trainIdx].pt[1]))
         # 求出模板原点在匹配图像上的坐标
         offset_point = src_point - sch_point
-        # rect = Rect.create_by_point_size(offset_point, Size(im_search.shape[1], im_search.shape[0]))
-        rect = Rect.create_by_point_size(offset_point, Size(124, 86))
+        rect = Rect.create_by_point_size(offset_point, Size(im_search.shape[1], im_search.shape[0]))
         logger.debug('rect={},sch={}, src={}, offset={}', rect, sch_point, src_point, offset_point)
         return rect
 
@@ -178,7 +182,6 @@ class KeypointMatch(object):
         h_s, w_s = im_source.size[:2]
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
         dst = cv2.perspectiveTransform(pts, M)
-
         # trans numpy arrary to python list: [(a, b), (a1, b1), ...]
 
         def cal_rect_pts(dst):
@@ -203,7 +206,7 @@ class KeypointMatch(object):
         y_min, y_max = int(min(y_min, h_s - 1)), int(min(y_max, h_s - 1))
         return Rect(x=x_min, y=y_min, width=(x_max - x_min), height=(y_max - y_min))
 
-    def _cal_sift_confidence(self, im_search, resize_img):
+    def _cal_confidence(self, im_search, resize_img):
         confidence = match_template.cal_rgb_confidence(img_src_rgb=im_search, img_sch_rgb=resize_img)
         confidence = (1 + confidence) / 2
         return confidence
@@ -255,7 +258,7 @@ if __name__ == '__main__':
     orb = ORB()
     brief = BRIEF()
     match = match_template()
-    # akaze = AKAZE()
+    akaze = AKAZE()
     im_search = IMAGE('./core/cv/test_image/test2.png')
     im_source = IMAGE('./core/cv/test_image/test1.png')
     # print(im_source.shape, im_search.shape)

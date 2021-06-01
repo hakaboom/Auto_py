@@ -7,27 +7,18 @@ from core.error import SurfCudaError
 from loguru import logger
 
 
-class ORB(KeypointMatch):
+class _ORB(KeypointMatch):
     METHOD_NAME = "ORB"
-    # ORB识别特征点匹配，参数设置:
-    FLANN_INDEX_KDTREE = 0
-    FLANN_INDEX_LSH = 6
 
     def __init__(self):
-        super(ORB, self).__init__()
+        super(_ORB, self).__init__()
         # 创建ORB实例
-        self.detector = cv2.ORB_create(nfeatures=400)
+        self.detector = cv2.ORB_create(nfeatures=5000)
+        self.descriptor = cv2.xfeatures2d.BEBLID_create(0.75)
 
     def create_matcher(self):
-        # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_feature2d/py_matcher/py_matcher.html#flann-based-matcher
-        index_params = {
-            'algorithm': self.FLANN_INDEX_LSH,
-            'table_number': 6,  # 12
-            'key_size': 12,  # 20
-            'multi_probe_level': 1,  # 2
-        }
-        search_params = {'checks': 50}
-        self.matcher = cv2.FlannBasedMatcher(index_params, search_params)
+        # https://github.com/iago-suarez/beblid-opencv-demo
+        self.matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
 
     def get_key_points(self, im_source, im_search):
         """计算所有特征点,并匹配"""
@@ -36,11 +27,17 @@ class ORB(KeypointMatch):
         kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source)
         matches = self.match_keypoints(des_sch=des_sch, des_src=des_src)
         good = []
+        # 出现过matches对中只有1个参数的情况,会导致遍历的时候造成报错
         for v in matches:
             if len(v) == 2:
                 if v[0].distance < self.FILTER_RATIO * v[1].distance:
                     good.append(v[0])
         return kp_sch, kp_src, good
+
+    def get_keypoints_and_descriptors(self, image):
+        keypoints = self.detector.detect(image, None)
+        keypoints, descriptors = self.descriptor.compute(image, keypoints)
+        return keypoints, descriptors
 
 
 class SIFT(KeypointMatch):
@@ -101,32 +98,7 @@ class AKAZE(KeypointMatch):
         self.matcher = cv2.BFMatcher(cv2.NORM_L1)
 
 
-class _CUDA(object):
-    def get_key_points(self, im_source, im_search):
-        """计算所有特征点,并匹配"""
-        im_source, im_search = im_source.rgb_2_gray(), im_search.rgb_2_gray()
-        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search)
-        kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source)
-        matches = self.match_keypoints(des_sch=des_sch, des_src=des_src)
-        good = []
-        for m, n in matches:
-            if m.distance < self.FILTER_RATIO * n.distance:
-                good.append(m)
-        kp_sch = cv2.cuda_SURF_CUDA.downloadKeypoints(self.detector, kp_sch)
-        kp_src = cv2.cuda_SURF_CUDA.downloadKeypoints(self.detector, kp_src)
-        # print('{}:kp_sch={}，kp_src={}, good={}'.format(self.METHOD_NAME, str(len(kp_sch)), str(len(kp_src)), str(len(good))))
-        # cv2.namedWindow(str(len(kp_src) + 3), cv2.WINDOW_KEEPRATIO)
-        # cv2.imshow(str(len(kp_src)+1), cv2.drawKeypoints(im_source.download(), kp_src, im_source.download(),
-        #                                                  color=(255, 0, 255)))
-        # cv2.imshow(str(len(kp_src)+2), cv2.drawKeypoints(im_search.download(), kp_sch, im_search.download(),
-        #                                                  color=(255, 0, 255)))
-        # cv2.imshow(str(len(kp_src)+3), cv2.drawMatches(im_search.download(), kp_sch, im_source.download(), kp_src,
-        #                                            good, None, flags=2))
-        # cv2.waitKey(0)
-        return kp_sch, kp_src, good
-
-
-class _CUDA_SURF(_CUDA, KeypointMatch):
+class _CUDA_SURF(KeypointMatch):
     # https://docs.opencv.org/master/db/d06/classcv_1_1cuda_1_1SURF__CUDA.html
     METHOD_NAME = 'CUDA_SURF'
     # 方向不变性:True检测/False不检测
@@ -186,10 +158,78 @@ class _CUDA_SURF(_CUDA, KeypointMatch):
         keypoints, descriptors = self.detector.detectWithDescriptors(image, None)
         return keypoints, descriptors
 
+    def get_key_points(self, im_source, im_search):
+        """计算所有特征点,并匹配"""
+        im_source, im_search = im_source.rgb_2_gray(), im_search.rgb_2_gray()
+        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search)
+        kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source)
+        matches = self.match_keypoints(des_sch=des_sch, des_src=des_src)
+        good = []
+        for m, n in matches:
+            if m.distance < self.FILTER_RATIO * n.distance:
+                good.append(m)
+        kp_sch = cv2.cuda_SURF_CUDA.downloadKeypoints(self.detector, kp_sch)
+        kp_src = cv2.cuda_SURF_CUDA.downloadKeypoints(self.detector, kp_src)
+        # print('{}:kp_sch={}，kp_src={}, good={}'.format(self.METHOD_NAME,
+        # str(len(kp_sch)), str(len(kp_src)), str(len(good))))
+        # cv2.namedWindow(str(len(kp_src) + 3), cv2.WINDOW_KEEPRATIO)
+        # cv2.imshow(str(len(kp_src)+1), cv2.drawKeypoints(im_source.download(), kp_src, im_source.download(),
+        #                                                  color=(255, 0, 255)))
+        # cv2.imshow(str(len(kp_src)+2), cv2.drawKeypoints(im_search.download(), kp_sch, im_search.download(),
+        #                                                  color=(255, 0, 255)))
+        # cv2.imshow(str(len(kp_src)+3), cv2.drawMatches(im_search.download(), kp_sch, im_source.download(), kp_src,
+        #                                            good, None, flags=2))
+        # cv2.waitKey(0)
+        return kp_sch, kp_src, good
+
+
+class _CUDA_ORB(KeypointMatch):
+    METHOD_NAME = 'CUDA_ORB'
+
+    def __init__(self):
+        super(_CUDA_ORB, self).__init__()
+        self.detector = cv2.cuda_ORB.create(nfeatures=5000)
+
+    def check_detection_input(self, im_source, im_search):
+        im_source = IMAGE(im_source)
+        im_search = IMAGE(im_search)
+        im_source.transform_gpu()
+        im_search.transform_gpu()
+        return im_source, im_search
+
+    def create_matcher(self):
+        # https://github.com/iago-suarez/beblid-opencv-demo
+        # self.matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
+        self.matcher = cv2.cuda_DescriptorMatcher.createBFMatcher(cv2.NORM_HAMMING)
+
+    def get_keypoints_and_descriptors(self, image):
+        # https://github.com/prismai/opencv_contrib/commit/d7d6360fceb5881d596be95b03568d4dcdb7236d
+        keypoints, descriptors = self.detector.detectAndComputeAsync(image, None)
+        keypoints = self.detector.convert(keypoints)
+        return keypoints, descriptors
+
+    def get_key_points(self, im_source, im_search):
+        """计算所有特征点,并匹配"""
+        im_source, im_search = im_source.rgb_2_gray(), im_search.rgb_2_gray()
+        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search)
+        kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source)
+        matches = self.match_keypoints(des_sch=des_sch, des_src=des_src)
+        good = []
+        for m, n in matches:
+            if m.distance < self.FILTER_RATIO * n.distance:
+                good.append(m)
+        return kp_sch, kp_src, good
+
 
 if cv2.cuda.getCudaEnabledDeviceCount() > 0:
     class SURF(_CUDA_SURF):
         pass
+
+    class ORB(_CUDA_ORB):
+        pass
 else:
     class SURF(_SURF):
+        pass
+
+    class ORB(_ORB):
         pass
