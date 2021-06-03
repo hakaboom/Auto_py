@@ -1,10 +1,13 @@
 #! usr/bin/python
 # -*- coding:utf-8 -*-
 import cv2
+import numpy
+
 from core.utils.coordinate import Rect, Size
 from core.utils.base import auto_increment
 from core.cv.utils import read_image, bgr_2_gray, bytes_2_img
 import numpy as np
+from typing import Union
 
 
 class _image(object):
@@ -15,14 +18,14 @@ class _image(object):
         if img is not None:
             self.imwrite(img, flags)
 
-    def save2path(self, path=None):
+    def save2path(self, path=None) -> None:
         if self.imread() is None:
             raise ValueError('没有缓存图片')
         path = path or self.path
         cv2.imwrite(path, self.imread())
 
-    def imwrite(self, img, flags: int = cv2.IMREAD_COLOR):
-        if type(img) == str:
+    def imwrite(self, img, flags: int = cv2.IMREAD_COLOR) -> None:
+        if isinstance(img, str):
             self.image_data = read_image('{}{}'.format(self.tmp_path, img), flags)
         elif isinstance(img, np.ndarray) or isinstance(img, cv2.cuda_GpuMat):
             self.image_data = img
@@ -41,26 +44,26 @@ class _image(object):
         self.transform_gpu()
         return self.image_data
 
-    def clean_image(self):
+    def clean_image(self) -> None:
         """清除缓存"""
         self.image_data = None
 
     @property
-    def shape(self):
+    def shape(self) -> tuple:
         if self.type() == 'cpu':
             return self.imread().shape
         elif self.type() == 'gpu':
             return self.download().size()[::-1] + (self.download().channels(),)
 
     @property
-    def size(self):
+    def size(self) -> tuple:
         if self.type() == 'cpu':
             return self.imread().shape[:-1]
         elif self.type() == 'gpu':
             return self.download().size()[::-1]
 
     @property
-    def path(self):
+    def path(self) -> str:
         return self.tmp_path
 
     def transform_gpu(self) -> None:
@@ -84,7 +87,7 @@ class _image(object):
         else:
             raise TypeError('transform Error, img type={}'.format(type(img)))
 
-    def type(self):
+    def type(self) -> str:
         if isinstance(self.image_data, np.ndarray):
             return 'cpu'
         elif isinstance(self.image_data, cv2.cuda_GpuMat):
@@ -94,7 +97,7 @@ class _image(object):
 class IMAGE(_image):
     SHOW_INDEX = auto_increment()
 
-    def imshow(self, title: str = None):
+    def imshow(self, title: str = None) -> None:
         """以GUI显示图片"""
         title = str(title or self.SHOW_INDEX())
         cv2.namedWindow(title, cv2.WINDOW_KEEPRATIO)

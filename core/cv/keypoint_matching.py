@@ -1,6 +1,8 @@
 #! usr/bin/python
 # -*- coding:utf-8 -*-
 import cv2
+import numpy
+import time
 from core.cv.keypoint_base import KeypointMatch
 from core.cv.base_image import IMAGE
 from core.error import SurfCudaError
@@ -13,18 +15,19 @@ class _ORB(KeypointMatch):
     def __init__(self):
         super(_ORB, self).__init__()
         # 创建ORB实例
-        self.detector = cv2.ORB_create(nfeatures=5000)
+        self.detector = cv2.ORB_create(nfeatures=50000, scaleFactor=1.2, nlevels=4, firstLevel=2)
         self.descriptor = cv2.xfeatures2d.BEBLID_create(0.75)
 
     def create_matcher(self):
         # https://github.com/iago-suarez/beblid-opencv-demo
+        # need opencv-contrib
         self.matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
 
-    def get_key_points(self, im_source, im_search):
+    def get_key_points(self, img_source: IMAGE, img_search: IMAGE):
         """计算所有特征点,并匹配"""
-        im_source, im_search = im_source.imread(), im_search.imread()
-        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search)
-        kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source)
+        img_source, img_search = img_source.imread(), img_search.imread()
+        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=img_search)
+        kp_src, des_src = self.get_keypoints_and_descriptors(image=img_source)
         matches = self.match_keypoints(des_sch=des_sch, des_src=des_src)
         good = []
         # 出现过matches对中只有1个参数的情况,会导致遍历的时候造成报错
@@ -34,7 +37,7 @@ class _ORB(KeypointMatch):
                     good.append(v[0])
         return kp_sch, kp_src, good
 
-    def get_keypoints_and_descriptors(self, image):
+    def get_keypoints_and_descriptors(self, image: numpy.ndarray):
         keypoints = self.detector.detect(image, None)
         keypoints, descriptors = self.descriptor.compute(image, keypoints)
         return keypoints, descriptors
@@ -79,7 +82,7 @@ class BRIEF(KeypointMatch):
     def create_matcher(self):
         self.matcher = cv2.BFMatcher_create(cv2.NORM_L1)
 
-    def get_keypoints_and_descriptors(self, image):
+    def get_keypoints_and_descriptors(self, image: numpy.ndarray):
         # find the keypoints with STAR
         kp = self.star.detect(image, None)
         # compute the descriptors with BRIEF
@@ -114,15 +117,13 @@ class _CUDA_SURF(KeypointMatch):
                                                   _nOctaveLayers=4)
         self.matcher = cv2.cuda.DescriptorMatcher_createBFMatcher(cv2.NORM_L2)
 
-    def check_detection_input(self, im_source, im_search):
-        im_source = IMAGE(im_source)
-        im_search = IMAGE(im_search)
+    def check_detection_input(self, im_source: IMAGE, img_search: IMAGE):
+        im_source, img_search = self.check_image_size(im_source, img_search)
         im_source.transform_gpu()
-        im_search.transform_gpu()
-        im_source, im_search = self.check_image_size(im_source, im_search)
-        return im_source, im_search
+        img_search.transform_gpu()
+        return im_source, img_search
 
-    def check_image_size(self, im_source, im_search):
+    def check_image_size(self, im_source: IMAGE, im_search: IMAGE):
         try:
             self._check_image_size(im_source)
             self._check_image_size(im_search)
@@ -131,7 +132,7 @@ class _CUDA_SURF(KeypointMatch):
             return None, None
         return im_source, im_search
 
-    def _check_image_size(self, image):
+    def _check_image_size(self, image: IMAGE):
         # https://stackoverflow.com/questions/42492060/surf-cuda-error-while-computing-descriptors-and-keypoints
         # https://github.com/opencv/opencv_contrib/blob/master/modules/xfeatures2d/src/surf.cuda.cpp#L151
         # SURF匹配特征点时,无法处理长宽太小的图片
@@ -153,16 +154,16 @@ class _CUDA_SURF(KeypointMatch):
         if layer_height - 2 * min_margin < 0 or layer_width - 2 * min_margin < 0:
             raise SurfCudaError(image)
 
-    def get_keypoints_and_descriptors(self, image):
+    def get_keypoints_and_descriptors(self, image: cv2.cuda_GpuMat):
         """获取图像特征点和描述符."""
         keypoints, descriptors = self.detector.detectWithDescriptors(image, None)
         return keypoints, descriptors
 
-    def get_key_points(self, im_source, im_search):
+    def get_key_points(self, img_source: IMAGE, img_search: IMAGE):
         """计算所有特征点,并匹配"""
-        im_source, im_search = im_source.rgb_2_gray(), im_search.rgb_2_gray()
-        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search)
-        kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source)
+        img_source, img_search = img_source.rgb_2_gray(), img_search.rgb_2_gray()
+        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=img_search)
+        kp_src, des_src = self.get_keypoints_and_descriptors(image=img_source)
         matches = self.match_keypoints(des_sch=des_sch, des_src=des_src)
         good = []
         for m, n in matches:
@@ -184,35 +185,36 @@ class _CUDA_SURF(KeypointMatch):
 
 
 class _CUDA_ORB(KeypointMatch):
+    """
+    cuda_orb在图像大小太小时,在detect阶段会出现ROI报错
+    测试后发现可以同构建detector时, 修改金字塔nlevels和首层firstLevel大小来修正这个问题
+    """
     METHOD_NAME = 'CUDA_ORB'
 
     def __init__(self):
         super(_CUDA_ORB, self).__init__()
-        self.detector = cv2.cuda_ORB.create(nfeatures=5000)
+        self.detector = cv2.cuda_ORB.create(nfeatures=50000, scaleFactor=1.5, nlevels=3, firstLevel=3)
 
-    def check_detection_input(self, im_source, im_search):
-        im_source = IMAGE(im_source)
-        im_search = IMAGE(im_search)
+    def check_detection_input(self, im_source: IMAGE, img_search: IMAGE):
         im_source.transform_gpu()
-        im_search.transform_gpu()
-        return im_source, im_search
+        img_search.transform_gpu()
+        return im_source, img_search
 
     def create_matcher(self):
         # https://github.com/iago-suarez/beblid-opencv-demo
-        # self.matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
         self.matcher = cv2.cuda_DescriptorMatcher.createBFMatcher(cv2.NORM_HAMMING)
 
-    def get_keypoints_and_descriptors(self, image):
+    def get_keypoints_and_descriptors(self, image: cv2.cuda_GpuMat):
         # https://github.com/prismai/opencv_contrib/commit/d7d6360fceb5881d596be95b03568d4dcdb7236d
         keypoints, descriptors = self.detector.detectAndComputeAsync(image, None)
         keypoints = self.detector.convert(keypoints)
         return keypoints, descriptors
 
-    def get_key_points(self, im_source, im_search):
+    def get_key_points(self, img_source: IMAGE, img_search: IMAGE):
         """计算所有特征点,并匹配"""
-        im_source, im_search = im_source.rgb_2_gray(), im_search.rgb_2_gray()
-        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search)
-        kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source)
+        img_source, img_search = img_source.rgb_2_gray(), img_search.rgb_2_gray()
+        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=img_search)
+        kp_src, des_src = self.get_keypoints_and_descriptors(image=img_source)
         matches = self.match_keypoints(des_sch=des_sch, des_src=des_src)
         good = []
         for m, n in matches:
