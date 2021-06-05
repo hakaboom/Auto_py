@@ -2,149 +2,172 @@
 # -*- coding:utf-8 -*-
 import time
 import cv2
+import numpy
 import numpy as np
-from core.cv.utils import create_similar_rect, generate_result
+from core.cv.utils import generate_result
 from core.cv.match_template import match_template
-from core.utils.coordinate import Rect, Point, Size
+from core.utils.coordinate import Rect
 from core.cv.base_image import IMAGE
 from loguru import logger
+from typing import Tuple, List
 
 
 class KeypointMatch(object):
     FLANN_INDEX_KDTREE = 0
     FILTER_RATIO = 0.59
     METHOD_NAME = 'KeypointMatch'
+    template = match_template()
 
     def __init__(self, threshold=0.8):
         self.threshold = threshold
-        self.matcher = None
-        self.create_matcher()
+        self.matcher = self.create_matcher()
+        self.detector = cv2.KAZE_create()
 
-    def create_matcher(self):
+    def create_matcher(self) -> cv2.FlannBasedMatcher:
         index_params = {'algorithm': self.FLANN_INDEX_KDTREE, 'tree': 5}
         # 指定递归遍历的次数. 值越高结果越准确，但是消耗的时间也越多
         search_params = {'checks': 50}
-        self.matcher = cv2.FlannBasedMatcher(index_params, search_params)
+        matcher = cv2.FlannBasedMatcher(index_params, search_params)
+        return matcher
 
-    def find_best(self, img_source, img_search, threshold=0.8):
-        """基于FlannBasedMatcher的SIFT实现"""
-        threshold = threshold or self.threshold
+    def find_best(self, im_source, im_search, threshold=None):
+        """在im_source中找到最符合im_search的范围"""
+        threshold = threshold is None and self.threshold or threshold
         start_time = time.time()
-        img_source, img_search = self.check_detection_input(img_source, img_search)
-        if not img_source or not img_search:
+        im_source, im_search = self.check_detection_input(im_source, im_search)
+        if not im_source or not im_search:
             return None
-        # 第一步: 获取特征点集并匹配出特征点对
-        kp_sch, kp_src, good = self.get_key_points(img_search=img_search, img_source=img_source)
-        self.show_keypoints_and_descriptors(img_search, img_source, kp_sch, kp_src, good)
-        # 第二步：根据匹配点对(good),提取出来识别区域:
-        rect = self.extract_good_points(img_source, img_search, kp_sch, kp_src, good)
+        # 第一步: 获取特征点集
+        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search.rgb_2_gray())
+        kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source.rgb_2_gray())
+        # 第二步: 在特征点集中匹配最接近的范围
+        rect, matches, good = self.get_rect_from_good_matches(im_source, im_search, kp_sch, des_sch, kp_src, des_src)
         if not rect:
             return None
-        # 第三步,通过识别矩阵周围+-1像素的矩阵,求出结果可信度，并且返回最大精准度的范围
-        confidences = []
-        similar_rect = create_similar_rect(rect.x, rect.y, rect.width, rect.height)
-        h, w = img_search.size
-        for i in similar_rect:
-            # cv2.matchTemplate 目标和模板长宽不能一大一小
-            try:
-                target_img = img_source.crop_image(i)
-                target_img.resize(w, h)
-                confidences.append(self._cal_confidence(resize_img=target_img, img_search=img_search))
-            except:
-                pass
-        # 提取最大值
-        if confidences:
-            confidence = max(confidences)
-            rect = similar_rect[confidences.index(confidence)]
-        else:
-            confidence = 0
+        # 第三步, 从匹配图片截取矩阵范围,并缩放到模板大小,进行模板匹配求出相似度
+        target_img = im_source.crop_image(rect)
+        h, w = im_search.size
+        target_img.resize(w, h)
+        confidence = self._cal_confidence(resize_img=target_img, im_search=im_search)
         best_match = generate_result(rect=rect, confi=confidence)
-        logger.info('[{method_name}]:{Rect}, confidence=(max={max_confidence:.5f},min={min_confidence:.5f}), '
-                    'time={time:.1f}ms, kp_sch={kp_sch}, kp_src={kp_src}, good={good}',
-                    max_confidence=max(confidences), min_confidence=min(confidences),
-                    Rect=rect, time=(time.time() - start_time) * 1000, method_name=self.METHOD_NAME,
-                    kp_sch=len(kp_sch), kp_src=len(kp_src), good=len(good))
+        logger.info('[{method_name}]:{Rect}, confidence={confidence:.5f}, '
+                    'time={time:.1f}ms',
+                    confidence=confidence, Rect=rect, time=(time.time() - start_time) * 1000,
+                    method_name=self.METHOD_NAME)
         return best_match if confidence > threshold else None
 
-    @staticmethod
-    def check_detection_input(img_source, img_search):
-        if not isinstance(img_source, IMAGE):
-            img_source = IMAGE(img_source)
-        if not isinstance(img_search, IMAGE):
-            img_search = IMAGE(img_search)
-        return img_source, img_search
+    def find_all(self, im_source, im_search, threshold=None):
+        start = time.time()
+        threshold = threshold is None and self.threshold or threshold
+        im_source, im_search = self.check_detection_input(im_source, im_search)
+        if not im_source or not im_search:
+            return None
+        rect_list = []
+        # 第一步: 获取特征点集
+        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search.rgb_2_gray())
+        kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source.rgb_2_gray())
+        while True:
+            rect, matches, good = self.get_rect_from_good_matches(im_source, im_search, kp_sch, des_sch, kp_src, des_src)
+            if not rect:
+                break
+            target_img = im_source.crop_image(rect)
+            h, w = im_search.size
+            target_img.resize(w, h)
+            confidence = self._cal_confidence(resize_img=target_img, im_search=im_search)
+            if confidence > threshold:
+                rect_list.append(rect)
+                kp_src, des_src = self.delect_good_descriptors(good, kp_src, des_src)
+                kp_src, des_src = self.delect_rect_descriptors(rect, kp_src, des_src)
+            else:
+                break
+        if rect_list:
+            logger.info('[{METHOD_NAME}] find counts:{counts}, time={time:.2f}ms{result}'.format(
+                METHOD_NAME=self.METHOD_NAME,
+                counts=len(rect_list), time=(time.time() - start) * 1000,
+                result=''.join(['\n\t{}'.format(x) for x in rect_list])))
+        return rect
 
-    def extract_good_points(self, img_source, img_search, kp_sch, kp_src, good):
+    @staticmethod
+    def check_detection_input(im_source, im_search) -> Tuple[IMAGE, IMAGE]:
+        if not isinstance(im_source, IMAGE):
+            im_source = IMAGE(im_source)
+        if not isinstance(im_search, IMAGE):
+            im_search = IMAGE(im_search)
+        im_source.transform_cpu()
+        im_search.transform_cpu()
+        return im_source, im_search
+
+    def extract_good_points(self, im_source, im_search, kp_sch, kp_src, good):
         if len(good) in [0, 1]:
             # origin_result = self._handle_one_good_points(im_source, im_search, kp_src, kp_sch, good)
             return None
         elif len(good) in [2, 3]:
             if len(good) == 2:
                 # 匹配点对为2，根据点对求出目标区域，据此算出可信度：
-                origin_result = self._handle_two_good_points(img_source, img_search, kp_src, kp_sch, good)
+                origin_result = self._handle_two_good_points(im_source, im_search, kp_src, kp_sch, good)
             else:
-                origin_result = self._handle_three_good_points(img_source, img_search, kp_sch, kp_src, good)
+                origin_result = self._handle_three_good_points(im_source, im_search, kp_sch, kp_src, good)
             if isinstance(origin_result, dict):
                 return None
             else:
                 return origin_result
         else:
             # 匹配点大于4,使用单矩阵映射求出目标区域
-            return self._many_good_pts(img_source, img_search, kp_sch, kp_src, good)
+            return self._many_good_pts(im_source, im_search, kp_sch, kp_src, good)
 
-    def get_key_points(self, img_source, img_search):
-        """计算所有特征点,并匹配"""
-        img_source, img_search = img_source.imread(), img_search.imread()
-        kp_sch, des_sch = self.get_keypoints_and_descriptors(image=img_search)
-        kp_src, des_src = self.get_keypoints_and_descriptors(image=img_source)
+    @staticmethod
+    def delect_rect_descriptors(rect, keypoints, des):
+        tl, br = rect.tl, rect.br
+        kp = keypoints.copy()
+        des = des.copy()
+        delect_list = tuple(kp.index(i) for i in kp if tl.x <= i.pt[0] <= br.x and tl.y <= i.pt[1] <= br.y)
+        for i in sorted(delect_list, reverse=True):
+            kp.pop(i)
+        des = numpy.delete(des, delect_list, axis=0)
+        return kp, des
+
+    @staticmethod
+    def delect_good_descriptors(good, kp, des):
+        kp = kp.copy()
+        des = des.copy()
+        delect_list = [i.trainIdx for i in good]
+        for i in sorted(delect_list, reverse=True):
+            kp.pop(i)
+        des = numpy.delete(des, delect_list, axis=0)
+        return kp, des
+
+    def get_rect_from_good_matches(self, im_source, im_search, kp_sch, des_sch, kp_src, des_src):
         matches = self.match_keypoints(des_sch=des_sch, des_src=des_src)
+        good = self.get_good_in_matches(matches)
+        rect = self.extract_good_points(im_source, im_search, kp_sch, kp_src, good)
+        # img_source, img_search = IMAGE(im_source), IMAGE(im_search)
+        # print('{}:kp_sch={}，kp_src={}, good={}'.format(self.METHOD_NAME,
+        #                                                str(len(kp_sch)), str(len(kp_src)), str(len(good))))
+        # cv2.namedWindow(str(len(good) + 1), cv2.WINDOW_KEEPRATIO)
+        # img_search, img_source = img_search.imread(), img_source.imread()
+        # cv2.imshow(str(len(good)), cv2.drawMatches(img_search, kp_sch, img_source, kp_src, good, None, flags=2))
+        # cv2.imshow(str(len(good) + 1), cv2.drawKeypoints(img_source, kp_src, img_source, color=(255, 0, 255)))
+        # cv2.imshow(str(len(good) + 2), cv2.drawKeypoints(img_search, kp_sch, img_search, color=(255, 0, 255)))
+        # cv2.waitKey(0)
+
+        return rect, matches, good
+
+    def get_keypoints_and_descriptors(self, image: numpy.ndarray) -> Tuple[List[cv2.KeyPoint], numpy.ndarray]:
+        keypoints, descriptors = self.detector.detectAndCompute(image, None)
+        return keypoints, descriptors
+
+    def match_keypoints(self, des_sch: numpy.ndarray, des_src: numpy.ndarray) -> List[List[cv2.DMatch]]:
+        """Match descriptors (特征值匹配)."""
+        # 匹配两个图片中的特征点集，k=2表示每个特征点取出2个最匹配的对应点:
+        matches = self.matcher.knnMatch(des_sch, des_src, 2)
+        return matches
+
+    def get_good_in_matches(self, matches) -> List[cv2.DMatch]:
         good = []
         for m, n in matches:
             if m.distance < self.FILTER_RATIO * n.distance:
                 good.append(m)
-        return kp_sch, kp_src, good
-
-    def get_keypoints_and_descriptors(self, image):
-        keypoints, descriptors = self.detector.detectAndCompute(image, None)
-        return keypoints, descriptors
-
-    def match_keypoints(self, des_sch, des_src):
-        """Match descriptors (特征值匹配)."""
-        # 匹配两个图片中的特征点集，k=2表示每个特征点取出2个最匹配的对应点:
-        return self.matcher.knnMatch(des_sch, des_src, 2)
-
-    def _handle_one_good_points(self, img_source, img_search, kp_src, kp_sch, good):
-        """sift匹配中只有一对匹配的特征点对的情况."""
-        """此方法当前废弃"""
-        # 取出该点在图中的位置
-        sch_point = Point(int(kp_sch[0].pt[0]), int(kp_sch[0].pt[1]))
-        src_point = Point(int(kp_src[good[0].trainIdx].pt[0]), int(kp_src[good[0].trainIdx].pt[1]))
-        # 求出模板原点在匹配图像上的坐标
-        offset_point = src_point - sch_point
-        rect = Rect.create_by_point_size(offset_point, Size(img_search.shape[1], img_search.shape[0]))
-        logger.debug('rect={},sch={}, src={}, offset={}', rect, sch_point, src_point, offset_point)
-        return rect
-
-    def _handle_two_good_points(self, img_source, img_search, kp_src, kp_sch, good):
-        """处理两对特征点的情况."""
-        pts_sch1 = int(kp_sch[good[0].queryIdx].pt[0]), int(kp_sch[good[0].queryIdx].pt[1])
-        pts_sch2 = int(kp_sch[good[1].queryIdx].pt[0]), int(kp_sch[good[1].queryIdx].pt[1])
-        pts_src1 = int(kp_src[good[0].trainIdx].pt[0]), int(kp_src[good[0].trainIdx].pt[1])
-        pts_src2 = int(kp_src[good[1].trainIdx].pt[0]), int(kp_src[good[1].trainIdx].pt[1])
-
-        return self._two_good_points(pts_sch1, pts_sch2, pts_src1, pts_src2, img_search, img_source)
-
-    def _handle_three_good_points(self, img_source, img_search, kp_sch, kp_src, good):
-        """处理三对特征点的情况."""
-        # 拿出sch和src的两个点(点1)和(点2点3的中点)，
-        # 然后根据两个点原则进行后处理(注意ke_sch和kp_src以及queryIdx和trainIdx):
-        pts_sch1 = int(kp_sch[good[0].queryIdx].pt[0]), int(kp_sch[good[0].queryIdx].pt[1])
-        pts_sch2 = int((kp_sch[good[1].queryIdx].pt[0] + kp_sch[good[2].queryIdx].pt[0]) / 2), int(
-            (kp_sch[good[1].queryIdx].pt[1] + kp_sch[good[2].queryIdx].pt[1]) / 2)
-        pts_src1 = int(kp_src[good[0].trainIdx].pt[0]), int(kp_src[good[0].trainIdx].pt[1])
-        pts_src2 = int((kp_src[good[1].trainIdx].pt[0] + kp_src[good[2].trainIdx].pt[0]) / 2), int(
-            (kp_src[good[1].trainIdx].pt[1] + kp_src[good[2].trainIdx].pt[1]) / 2)
-        return self._two_good_points(pts_sch1, pts_sch2, pts_src1, pts_src2, img_search, img_source)
+        return good
 
     @staticmethod
     def _find_homography(sch_pts, src_pts):
@@ -161,7 +184,7 @@ class KeypointMatch(object):
             else:
                 return M, mask
 
-    def _many_good_pts(self, img_source, img_search, kp_sch, kp_src, good) -> Rect:
+    def _many_good_pts(self, im_source, im_search, kp_sch, kp_src, good) -> Rect:
         sch_pts, img_pts = np.float32([kp_sch[m.queryIdx].pt for m in good]).reshape(
             -1, 1, 2), np.float32([kp_src[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
         # M是转化矩阵
@@ -169,14 +192,13 @@ class KeypointMatch(object):
         matches_mask = mask.ravel().tolist()
         # 从good中间筛选出更精确的点(假设good中大部分点为正确的，由ratio=0.7保障)
         selected = [v for k, v in enumerate(good) if matches_mask[k]]
-
         # 针对所有的selected点再次计算出更精确的转化矩阵M来
         sch_pts, img_pts = np.float32([kp_sch[m.queryIdx].pt for m in selected]).reshape(
             -1, 1, 2), np.float32([kp_src[m.trainIdx].pt for m in selected]).reshape(-1, 1, 2)
-        M, mask = self._find_homography(sch_pts, img_pts)
+        # M, mask = self._find_homography(sch_pts, img_pts)
         # 计算四个角矩阵变换后的坐标，也就是在大图中的目标区域的顶点坐标:
-        h, w = img_search.shape[:2]
-        h_s, w_s = img_source.shape[:2]
+        h, w = im_search.shape[:2]
+        h_s, w_s = im_source.shape[:2]
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
         dst = cv2.perspectiveTransform(pts, M)
 
@@ -204,12 +226,42 @@ class KeypointMatch(object):
         y_min, y_max = int(min(y_min, h_s - 1)), int(min(y_max, h_s - 1))
         return Rect(x=x_min, y=y_min, width=(x_max - x_min), height=(y_max - y_min))
 
-    def _cal_confidence(self, img_search, resize_img):
-        confidence = match_template.cal_rgb_confidence(img_src_rgb=img_search, img_sch_rgb=resize_img)
-        confidence = (1 + confidence) / 2
-        return confidence
+    def _handle_one_good_points(self, im_source, im_search, kp_src, kp_sch, good):
+        """匹配中只有一对匹配的特征点对的情况."""
+        """此方法当前废弃"""
+        raise NotImplementedError
+        # 取出该点在图中的位置
+        # sch_point = Point(int(kp_sch[0].pt[0]), int(kp_sch[0].pt[1]))
+        # src_point = Point(int(kp_src[good[0].trainIdx].pt[0]), int(kp_src[good[0].trainIdx].pt[1]))
+        # # 求出模板原点在匹配图像上的坐标
+        # offset_point = src_point - sch_point
+        # rect = Rect.create_by_point_size(offset_point, Size(im_search.shape[1], im_search.shape[0]))
+        # logger.debug('rect={},sch={}, src={}, offset={}', rect, sch_point, src_point, offset_point)
+        # return rect
 
-    def _two_good_points(self, pts_sch1, pts_sch2, pts_src1, pts_src2, img_search, img_source):
+    def _handle_two_good_points(self, im_source, im_search, kp_src, kp_sch, good):
+        """处理两对特征点的情况."""
+        pts_sch1 = int(kp_sch[good[0].queryIdx].pt[0]), int(kp_sch[good[0].queryIdx].pt[1])
+        pts_sch2 = int(kp_sch[good[1].queryIdx].pt[0]), int(kp_sch[good[1].queryIdx].pt[1])
+        pts_src1 = int(kp_src[good[0].trainIdx].pt[0]), int(kp_src[good[0].trainIdx].pt[1])
+        pts_src2 = int(kp_src[good[1].trainIdx].pt[0]), int(kp_src[good[1].trainIdx].pt[1])
+
+        return self._two_good_points(pts_sch1, pts_sch2, pts_src1, pts_src2, im_search, im_source)
+
+    def _handle_three_good_points(self, im_source, im_search, kp_sch, kp_src, good):
+        """处理三对特征点的情况."""
+        # 拿出sch和src的两个点(点1)和(点2点3的中点)，
+        # 然后根据两个点原则进行后处理(注意ke_sch和kp_src以及queryIdx和trainIdx):
+        pts_sch1 = int(kp_sch[good[0].queryIdx].pt[0]), int(kp_sch[good[0].queryIdx].pt[1])
+        pts_sch2 = int((kp_sch[good[1].queryIdx].pt[0] + kp_sch[good[2].queryIdx].pt[0]) / 2), int(
+            (kp_sch[good[1].queryIdx].pt[1] + kp_sch[good[2].queryIdx].pt[1]) / 2)
+        pts_src1 = int(kp_src[good[0].trainIdx].pt[0]), int(kp_src[good[0].trainIdx].pt[1])
+        pts_src2 = int((kp_src[good[1].trainIdx].pt[0] + kp_src[good[2].trainIdx].pt[0]) / 2), int(
+            (kp_src[good[1].trainIdx].pt[1] + kp_src[good[2].trainIdx].pt[1]) / 2)
+        return self._two_good_points(pts_sch1, pts_sch2, pts_src1, pts_src2, im_search, im_source)
+
+    @staticmethod
+    def _two_good_points(pts_sch1, pts_sch2, pts_src1, pts_src2, im_search, im_source):
         """返回两对匹配特征点情形下的识别结果."""
         # 先算出中心点(在im_source中的坐标)：
         middle_point = [int((pts_src1[0] + pts_src2[0]) / 2), int((pts_src1[1] + pts_src2[1]) / 2)]
@@ -220,8 +272,8 @@ class KeypointMatch(object):
             confidence = 0.5
             return {'result': middle_point, 'rectangle': pypts, 'confidence': confidence}
         # 计算x,y轴的缩放比例：x_scale、y_scale，从middle点扩张出目标区域:(注意整数计算要转成浮点数结果!)
-        h, w = img_search.size[:2]
-        h_s, w_s = img_source.size[:2]
+        h, w = im_search.size[:2]
+        h_s, w_s = im_source.size[:2]
         x_scale = abs(1.0 * (pts_src2[0] - pts_src1[0]) / (pts_sch2[0] - pts_sch1[0]))
         y_scale = abs(1.0 * (pts_src2[1] - pts_src1[1]) / (pts_sch2[1] - pts_sch1[1]))
         # 得到scale后需要对middle_point进行校正，并非特征点中点，而是映射矩阵的中点。
@@ -245,16 +297,10 @@ class KeypointMatch(object):
             pypts.append(tuple(npt[0]))
         return Rect(x=x_min, y=y_min, width=(x_max - x_min), height=(y_max - y_min))
 
-    def show_keypoints_and_descriptors(self, img_search, img_source, kp_sch, kp_src, good):
-        img_source, img_search = IMAGE(img_source), IMAGE(img_search)
-        print('{}:kp_sch={}，kp_src={}, good={}'.format(self.METHOD_NAME,
-                                                       str(len(kp_sch)), str(len(kp_src)), str(len(good))))
-        cv2.namedWindow(str(len(good) + 1), cv2.WINDOW_KEEPRATIO)
-        img_search, img_source = img_search.imread(), img_source.imread()
-        cv2.imshow(str(len(good)), cv2.drawMatches(img_search, kp_sch, img_source, kp_src, good, None, flags=2))
-        cv2.imshow(str(len(good) + 1), cv2.drawKeypoints(img_source, kp_src, img_source, color=(255, 0, 255)))
-        cv2.imshow(str(len(good) + 2), cv2.drawKeypoints(img_search, kp_sch, img_search, color=(255, 0, 255)))
-        cv2.waitKey(0)
+    def _cal_confidence(self, im_search, resize_img):
+        confidence = self.template.cal_rgb_confidence(img_src_rgb=im_search, img_sch_rgb=resize_img)
+        confidence = (1 + confidence) / 2
+        return confidence
 
 
 if __name__ == '__main__':
@@ -272,12 +318,12 @@ if __name__ == '__main__':
     im_source = IMAGE('./core/cv/test_image/test1.png')
     startTime = time.time()
     for i in range(100):
-        # a = surf.find_best(img_search=im_search, img_source=im_source)
-        # b = sift.find_best(img_search=im_search, img_source=im_source)
-        c = orb.find_best(img_search=im_search, img_source=im_source)
-        # d = brief.find_best(img_search=im_search, img_source=im_source)
-        # e = match.find_template(img_search=im_search, img_source=im_source)
-        # f = akaze.find_best(img_search=im_search, img_source=im_source)
+        # a = surf.find_best(im_search=im_search, im_source=im_source)
+        # b = sift.find_best(im_search=im_search, im_source=im_source)
+        c = orb.find_best(im_search=im_search, im_source=im_source)
+        # d = brief.find_best(im_search=im_search, im_source=im_source)
+        # e = match.find_template(im_search=im_search, im_source=im_source)
+        # f = akaze.find_best(im_search=im_search, im_source=im_source)
         # im_source.crop_image(c["rect"]).imshow()
         # cv2.waitKey(0)
 

@@ -10,10 +10,12 @@ from loguru import logger
 
 
 class _match_template(object):
+    METHOD_NAME = "tpl"
+
     def __init__(self):
         self.threshold = 0.85
 
-    def find_template(self, im_source, im_search, threshold=None):
+    def find_template(self, im_source, im_search, threshold=None, rgb=True):
         """
         模板匹配
         :param im_source: 待匹配图像
@@ -29,17 +31,17 @@ class _match_template(object):
         h, w = im_search.size
         # 求可信度
         img_crop = im_source.crop_image(Rect(max_loc[0], max_loc[1], w, h))
-        confidence = self.cal_rgb_confidence(img_crop, im_search)
+        confidence = self._get_confidence_from_matrix(img_crop, im_search, max_val=max_val, rgb=rgb)
         # 如果可信度小于threshold,则返回None
         if confidence < (threshold or self.threshold):
             return None
         x, y = max_loc
         rect = Rect(x=x, y=y, width=w, height=h)
-        logger.info('[tpl]{Rect}, confidence={confidence}, time={time:.2f}'.format(confidence=confidence, Rect=rect,
-                                                                             time=(time.time() - start) * 1000))
+        logger.info('[{METHOD_NAME}]{Rect}, confidence={confidence}, time={time:.2f}ms'.format(
+            METHOD_NAME=self.METHOD_NAME, confidence=confidence, Rect=rect, time=(time.time() - start) * 1000))
         return generate_result(rect, confidence)
 
-    def find_templates(self, im_source, im_search, threshold=None, max_count=10):
+    def find_templates(self, im_source, im_search, threshold=None, max_count=10, rgb=True):
         """
         模板匹配
         :param im_source: 待匹配图像
@@ -57,16 +59,17 @@ class _match_template(object):
         while True:
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
             img_crop = im_source.crop_image(Rect(max_loc[0], max_loc[1], w, h))
-            confidence = self.cal_rgb_confidence(img_crop, im_search)
-            if (confidence < (threshold or self.threshold)) or len(result) >= max_count:
-                break
+            confidence = self._get_confidence_from_matrix(img_crop, im_search, max_val=max_val, rgb=rgb)
             x, y = max_loc
             rect = Rect(x, y, w, h)
+            if (confidence < (threshold or self.threshold)) or len(result) >= max_count:
+                break
             result.append(generate_result(rect, confidence))
             cv2.rectangle(res, (int(max_loc[0] - w / 2), int(max_loc[1] - h / 2)),
                           (int(max_loc[0] + w / 2), int(max_loc[1] + h / 2)), (0, 0, 0), -1)
         if result:
-            print('[tpls] find counts:{counts}, time={time:.2f}ms{result}'.format(
+            print('[{METHOD_NAME}s] find counts:{counts}, time={time:.2f}ms{result}'.format(
+                METHOD_NAME=self.METHOD_NAME,
                 counts=len(result), time=(time.time() - start) * 1000,
                 result=''.join(['\n\t{}, confidence={}'.format(x['rect'], x['confidence'])for x in result])))
         return result if result else None
@@ -97,16 +100,27 @@ class _match_template(object):
             bgr_confidence[i] = max_val
         return min(bgr_confidence)
 
+    @staticmethod
+    def _get_confidence_from_matrix(img_crop, im_search, max_val, rgb):
+        """根据结果矩阵求出confidence."""
+        # 求取可信度:
+        if rgb:
+            # 如果有颜色校验,对目标区域进行BGR三通道校验:
+            confidence = _match_template.cal_rgb_confidence(img_crop, im_search)
+        else:
+            confidence = max_val
+        return confidence
+
 
 class _cuda_match_template(_match_template):
+    METHOD_NAME = "cuda_tpl"
+
     def __init__(self):
         super(_cuda_match_template, self).__init__()
         self.matcher = cv2.cuda.createTemplateMatching(cv2.CV_8U, cv2.TM_CCOEFF_NORMED)
 
     @staticmethod
     def check_detection_input(im_source, im_search):
-        im_source = IMAGE(im_source)
-        im_search = IMAGE(im_search)
         im_source.transform_gpu()
         im_search.transform_gpu()
         return im_source, im_search
@@ -131,6 +145,16 @@ class _cuda_match_template(_match_template):
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res_temp)
             bgr_confidence[i] = max_val
         return min(bgr_confidence)
+
+    def _get_confidence_from_matrix(self, img_crop, im_search, max_val, rgb):
+        """根据结果矩阵求出confidence."""
+        # 求取可信度:
+        if rgb:
+            # 如果有颜色校验,对目标区域进行BGR三通道校验:
+            confidence = self.cuda_cal_rgb_confidence(img_crop, im_search)
+        else:
+            confidence = max_val
+        return confidence
 
 
 if cv2.cuda.getCudaEnabledDeviceCount() > 0:
