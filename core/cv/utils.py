@@ -84,3 +84,12 @@ def img_mat_rgb_2_gray(img_mat):
     """
     assert isinstance(img_mat[0][0], np.ndarray), "input must be instance of np.ndarray"
     return cv2.cvtColor(img_mat, cv2.COLOR_BGR2GRAY)
+
+
+class auto_increment(object):
+    def __init__(self):
+        self._val = 0
+
+    def __call__(self):
+        self._val += 1
+        return self._val

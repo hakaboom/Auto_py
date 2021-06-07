@@ -32,8 +32,8 @@ class KeypointMatch(object):
 
     def find_best(self, im_source, im_search, threshold=None):
         """在im_source中找到最符合im_search的范围"""
-        threshold = threshold is None and self.threshold or threshold
         start_time = time.time()
+        threshold = threshold is None and self.threshold or threshold
         im_source, im_search = self.check_detection_input(im_source, im_search)
         if not im_source or not im_search:
             return None
