@@ -6,8 +6,7 @@ import numpy
 import numpy as np
 from core.cv.utils import generate_result
 from core.cv.match_template import match_template
-from core.utils.coordinate import Rect
-from core.cv.base_image import IMAGE
+from baseImage import IMAGE, Rect, Point, Size
 from loguru import logger
 from typing import Tuple, List
 
@@ -66,7 +65,12 @@ class KeypointMatch(object):
         # 第一步: 获取特征点集
         kp_sch, des_sch = self.get_keypoints_and_descriptors(image=im_search.rgb_2_gray())
         kp_src, des_src = self.get_keypoints_and_descriptors(image=im_source.rgb_2_gray())
+
         while True:
+            # 无特征点时, 结束函数
+            if len(kp_src) == 0:
+                break
+
             rect, matches, good = self.get_rect_from_good_matches(im_source, im_search, kp_sch, des_sch, kp_src, des_src)
             if not rect:
                 break
@@ -77,15 +81,20 @@ class KeypointMatch(object):
             if confidence > threshold:
                 rect_list.append(rect)
                 kp_src, des_src = self.delect_good_descriptors(good, kp_src, des_src)
+                # 无特征点时, 结束函数
+                if len(kp_src) == 0:
+                    break
+
                 kp_src, des_src = self.delect_rect_descriptors(rect, kp_src, des_src)
             else:
                 break
+
         if rect_list:
             logger.info('[{METHOD_NAME}] find counts:{counts}, time={time:.2f}ms{result}'.format(
                 METHOD_NAME=self.METHOD_NAME,
                 counts=len(rect_list), time=(time.time() - start) * 1000,
                 result=''.join(['\n\t{}'.format(x) for x in rect_list])))
-        return rect
+        return rect_list
 
     @staticmethod
     def check_detection_input(im_source, im_search) -> Tuple[IMAGE, IMAGE]:
@@ -116,13 +125,15 @@ class KeypointMatch(object):
             return self._many_good_pts(im_source, im_search, kp_sch, kp_src, good)
 
     @staticmethod
-    def delect_rect_descriptors(rect, keypoints, des):
+    def delect_rect_descriptors(rect, kp, des):
         tl, br = rect.tl, rect.br
-        kp = keypoints.copy()
+        kp = kp.copy()
         des = des.copy()
+
         delect_list = tuple(kp.index(i) for i in kp if tl.x <= i.pt[0] <= br.x and tl.y <= i.pt[1] <= br.y)
         for i in sorted(delect_list, reverse=True):
             kp.pop(i)
+
         des = numpy.delete(des, delect_list, axis=0)
         return kp, des
 
@@ -130,9 +141,11 @@ class KeypointMatch(object):
     def delect_good_descriptors(good, kp, des):
         kp = kp.copy()
         des = des.copy()
+
         delect_list = [i.trainIdx for i in good]
         for i in sorted(delect_list, reverse=True):
             kp.pop(i)
+
         des = numpy.delete(des, delect_list, axis=0)
         return kp, des
 
@@ -304,7 +317,7 @@ class KeypointMatch(object):
 
 
 if __name__ == '__main__':
-    from core.cv.base_image import IMAGE
+    from baseImage import IMAGE
     from core.cv.keypoint_matching import SIFT, SURF, ORB, BRIEF, AKAZE
     from core.cv.match_template import match_template
 

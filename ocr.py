@@ -4,9 +4,8 @@ import json
 import pybase64
 import cv2
 import numpy as np
-from core.cv.base_image import IMAGE
+from baseImage import IMAGE, Rect, Point
 from core.utils.base import pprint
-from core.utils.coordinate import Rect, Point
 
 
 class jsonEncoder(json.JSONEncoder):

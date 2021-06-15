@@ -6,9 +6,7 @@ import cv2
 import numpy
 import time
 from core.cv.keypoint_base import KeypointMatch
-from core.utils.coordinate import Rect, Point
-from core.cv.utils import generate_result
-from core.cv.base_image import IMAGE
+from baseImage import IMAGE
 from core.error import SurfCudaError
 from loguru import logger
 from typing import Tuple, List
@@ -154,7 +152,7 @@ class _CUDA_SURF(KeypointMatch):
         self.detector = cv2.cuda.SURF_CUDA_create(self.HESSIAN_THRESHOLD, _extended=True, _upright=self.UPRIGHT,
                                                   _nOctaveLayers=4)
 
-    def create_matcher(self) -> cv2.cuda_DescriptorMatcher:
+    def create_matcher(self):
         matcher = cv2.cuda.DescriptorMatcher_createBFMatcher(cv2.NORM_L2)
         return matcher
 
@@ -239,7 +237,7 @@ class _CUDA_ORB(KeypointMatch):
         im_search.transform_gpu()
         return im_source, im_search
 
-    def create_matcher(self) -> cv2.cuda_DescriptorMatcher:
+    def create_matcher(self):
         # https://github.com/iago-suarez/beblid-opencv-demo
         matcher = cv2.cuda_DescriptorMatcher.createBFMatcher(cv2.NORM_HAMMING)
         return matcher
@@ -261,9 +259,11 @@ class _CUDA_ORB(KeypointMatch):
         tl, br = rect.tl, rect.br
         kp = kp.copy()
         des = des.download()
+
         delect_list = tuple(kp.index(i) for i in kp if tl.x <= i.pt[0] <= br.x and tl.y <= i.pt[1] <= br.y)
         for i in sorted(delect_list, reverse=True):
             kp.pop(i)
+
         des = numpy.delete(des, delect_list, axis=0)
         mat = cv2.cuda_GpuMat()
         mat.upload(des)
@@ -273,9 +273,11 @@ class _CUDA_ORB(KeypointMatch):
     def delect_good_descriptors(good, kp, des):
         kp = kp.copy()
         des = des.download()
+
         delect_list = [i.trainIdx for i in good]
         for i in sorted(delect_list, reverse=True):
             kp.pop(i)
+
         des = numpy.delete(des, delect_list, axis=0)
         mat = cv2.cuda_GpuMat()
         mat.upload(des)

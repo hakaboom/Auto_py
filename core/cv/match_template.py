@@ -4,8 +4,7 @@
 import cv2
 import time
 from core.cv.utils import generate_result
-from core.cv.base_image import IMAGE
-from core.utils.coordinate import Rect
+from baseImage import IMAGE, Rect
 from loguru import logger
 
 
@@ -166,8 +165,8 @@ else:
 
 
 if __name__ == '__main__':
-    from core.cv.base_image import IMAGE
-    from core.utils.coordinate import Anchor,  Rect
+    from baseImage import IMAGE
+    from baseImage.coordinate import Anchor,  Rect
     Anchor = Anchor(dev={'width': 1920, 'height': 1080},
                     cur={'width': 3400, 'height': 1440, 'left': 260, 'right': 260}, orientation=1)
 

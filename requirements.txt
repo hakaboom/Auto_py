@@ -3,3 +3,4 @@ loguru==0.5.3
 numpy==1.19.5
 win32-setctime==1.0.3
 pydantic~=1.7.3
+baseImage==1.0.4
