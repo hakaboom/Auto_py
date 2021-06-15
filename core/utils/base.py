@@ -19,15 +19,6 @@ def initLogger():
                colorize=True, filter=filter_level)
 
 
-class auto_increment(object):
-    def __init__(self):
-        self._val = 0
-
-    def __call__(self):
-        self._val += 1
-        return self._val
-
-
 def get_varible_name(var):
     for item in sys._getframe(2).f_locals.items():
         if (var is item[1]):
