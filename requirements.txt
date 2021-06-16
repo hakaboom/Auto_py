@@ -4,5 +4,6 @@ numpy==1.19.5
 win32-setctime==1.0.3
 pydantic~=1.7.3
 baseImage>=1.0.4
-requests>=2.25.1
-pybase64>=1.1.4
+requests==2.25.1
+pybase64==1.1.4
+py-image-registration>=1.0.2
