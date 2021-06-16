@@ -4,8 +4,11 @@ import json
 import pybase64
 import cv2
 import numpy as np
+from functools import wraps
 from baseImage import IMAGE, Rect, Point
-from core.utils.base import pprint
+from requests import exceptions
+from core.error import OcrError
+from loguru import logger
 
 
 class jsonEncoder(json.JSONEncoder):
@@ -24,6 +27,17 @@ def encodeImage(img):
     return image_data
 
 
+def when_http_error(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except exceptions.ConnectTimeout:
+            logger.error('ocr服务器连接超时')
+            raise OcrError
+    return wrapper
+
+
 class OCR(object):
     headers = {"Content-type": "application/json"}
     url = 'http://127.0.0.1:12345/'
@@ -37,21 +51,26 @@ class OCR(object):
         self.model = model
         self.scores = scores
 
+    @when_http_error
     def getText(self, img, lang='', scores=None):
         post_data = {
             'image': encodeImage(img),
             'lang': lang or self.lang
         }
         url = '{url}{model}'.format(url=self.url, model=self.url_model[self.model])
-        ret = requests.post(url=url, headers=self.headers, data=json.dumps(post_data, cls=jsonEncoder))
+        ret = requests.post(url=url, headers=self.headers, timeout=30,
+                            data=json.dumps(post_data, cls=jsonEncoder))
+        result = None
+
         if ret.status_code == 200:
-            text = json.loads(ret.text)
-            ocr = text['ocr']
-            if ocr:
-                result = self._ret_general(text['ocr'], scores)
-                if result:
-                    return result
-        return None
+            ret = ret.json()
+            if ret.get('ocr'):
+                if self.model == 'general_basic':
+                    result = self._ret_general_basic(ret['ocr'], scores)
+                elif self.model == 'general':
+                    result = self._ret_general(ret['ocr'], scores)
+
+        return result if result else None
 
     def _ret_general_basic(self, ret, scores=None):
         if ret['scores'] >= (scores or self.scores):

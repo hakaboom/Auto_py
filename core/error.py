@@ -20,14 +20,9 @@ class AdbError(Exception):
         return "stdout[%s],stderr[%s]\ncmds[%s]" % (self.stdout, self.stderr, ' '.join(self.cmds))
 
 
-class SurfCudaError(Exception):
-    def __init__(self, image):
-        self.image = image
-
+class OcrError(Exception):
+    """
+        when ocr goes wrong
+    """
     def __str__(self):
-        return '{width}x{height}'.format(width=self.image.size[1], height=self.image.size[0])
-
-
-class CvError(SurfCudaError):
-    def __init__(self, image):
-        self.image = image
+        return 'ocr出现错误,请检查报错信息'
