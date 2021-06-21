@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-from image_registration import *
-from ocr import OCR
-from core.utils.base import pprint
+import cv2
 
-ocr = OCR(lang='ch', model='general')
-pprint(ocr.getText(img='./tmp/test4.png'))
+from core.run import Android
 
+device = Android(device_id='emulator-5554', cap_method='adbcap')
+device.screenshot().imshow()
+cv2.waitKey(0)

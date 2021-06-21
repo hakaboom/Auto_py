@@ -11,7 +11,7 @@ from core.constant import (TEMP_HOME, MNT_HOME, MNT_LOCAL_NAME, MNT_INSTALL_PATH
 from core.utils.nbsp import NonBlockingStreamReader
 from core.utils.safesocket import SafeSocket
 from core.utils.snippet import str2byte, get_std_encoding
-from .base import transform
+from .transform import transform
 
 
 class _Minitouch(transform):

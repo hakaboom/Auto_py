@@ -2,14 +2,15 @@
 # -*- coding:utf-8 -*-
 import time
 from core.adb import ADB
-from core.minicap import Minicap
-from core.touch_method.event_touch import Touch as EVENTTOUCH
-from core.touch_method.minitouch import Minitouch
-from core.touch_method.maxtouch import Maxtouch
+from core.cap_methods.minicap import Minicap
+from core.touch_methods.event_touch import Touch as EVENTTOUCH
+from core.touch_methods.minitouch import Minitouch
+from core.touch_methods.maxtouch import Maxtouch
+from core.cap_methods.adbcap import AdbCap
 from core.constant import TOUCH_METHOD, CAP_METHOD, SDK_VERISON_ANDROID10
-from core.Javecap import Javacap
+from core.cap_methods.Javecap import Javacap
 from core.rotation import Rotation
-from core.utils.base import initLogger, pprint
+from core.utils.base import initLogger
 from baseImage import IMAGE as Image
 from core.constant import ADB_CAP_REMOTE_PATH
 from loguru import logger
@@ -38,6 +39,7 @@ class Android(object):
         if self.cap_method == CAP_METHOD.MINICAP:
             self.minicap = Minicap(self.adb)
         self.javacap = Javacap(self.adb)
+        self.adbcap = AdbCap(self.adb)
         self.maxtouch = Maxtouch(self.adb)
         self.EVENTTOUCH = EVENTTOUCH(self.adb)
         self.rotation_watcher = Rotation(self.adb)
@@ -50,9 +52,9 @@ class Android(object):
         if self.cap_method == CAP_METHOD.MINICAP:
             img_data = self.minicap.get_frame()
         elif self.cap_method == CAP_METHOD.JAVACAP:
-            img_data = self.javacap.get_frame_from_stream()
+            img_data = self.javacap.get_frame()
         elif self.cap_method == CAP_METHOD.ADBCAP:
-            img_data = self.adb.screenshot()
+            img_data = self.adbcap.get_frame()
         # 图片写入到缓存中
         self.tmp_image.imwrite(img_data)
         logger.info("screenshot time={:.2f}ms,size=({},{})", (time.time() - stamp) * 1000, *self.tmp_image.size)

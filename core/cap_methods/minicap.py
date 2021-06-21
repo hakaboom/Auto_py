@@ -12,23 +12,25 @@ from core.constant import (TEMP_HOME, MNC_HOME, MNC_CMD, MNC_SO_HOME,
 from core.utils.safesocket import SafeSocket
 from core.utils.nbsp import NonBlockingStreamReader
 from core.utils.snippet import reg_cleanup
+from core.cap_methods.base_cap import BaseCap
 
 
-class _Minicap(object):
+class _Minicap(BaseCap):
     """minicap模块"""
     RECVTIMEOUT = None
+    METHODS = 'minicap'
 
-    def __init__(self, adb: ADB):
-        """
-        :param adb: adb instance of android device
-        """
-        self.adb = adb
+    def __init__(self, adb: ADB, rotation_watcher=None):
+        super(_Minicap, self).__init__(adb)
         self.MNC_LOCAL_NAME = MNC_LOCAL_NAME.format(self.adb.get_device_id())
         self.MNC_PORT = 0
         self.quirk_flag = 0
         self.display_info = None
-        self.proc, self.nbsp = None, None
+        self.proc = None
+        self.nbsp = None
         self._update_rotation_event = threading.Event()
+        if rotation_watcher:
+            rotation_watcher.reg_callback(lambda x: self.update_rotation(x * 90))
         # 开启服务
         self.install()
         self.start_server()
@@ -74,25 +76,6 @@ class _Minicap(object):
         self.proc = proc
         self.nbsp = nbsp
         return proc
-
-    def close_server(self):
-        """close server"""
-        self.adb.kill_process(name=MNC_HOME)
-        if self.proc:
-            self.proc.kill()
-            self.adb.close_proc_pipe(self.proc)
-        if self.nbsp:
-            self.nbsp.kill()
-        self.adb.remove_forward('tcp:{}'.format(self.MNC_PORT))
-        self.MNC_PORT = 0
-        self.quirk_flag = 0
-        self.display_info = None
-        self.proc, self.nbsp = None, None
-        logger.info('minicap ends')
-
-    def restart_server(self):
-        self.close_server()
-        self.start_server()
 
     def _get_params(self):
         display_info = self.adb.get_display_info()
@@ -164,12 +147,17 @@ class _Minicap(object):
                 display_info['height'] = int(arr[0][1])
         return display_info
 
+    def update_rotation(self, rotation):
+        logger.debug("minicap update_rotation: {}", rotation)
+        self._update_rotation_event.set()
+
 
 class Minicap(_Minicap):
     def get_frame(self):
         if self._update_rotation_event.is_set():
             logger.info('minicap update_rotation')
-            self.restart_server()
+            self.teardown()
+            self.start_server()
             self._update_rotation_event.clear()
         return self._get_frame()
 
@@ -204,10 +192,10 @@ class Minicap(_Minicap):
 
         logger.info('get_frame ends')
         s.close()
-        self.close_server()
+        self.teardown()
         return None
 
-    def get_frame_adb(self):
+    def get_frame_from_adb(self):
         """
         通过adb获取minicap的图片数据
         :return:
@@ -223,6 +211,12 @@ class Minicap(_Minicap):
         jpg_data = jpg_data.replace(self.adb.line_breaker, b"\n")
         return jpg_data, (time.time() - stamp) * 1000
 
-    def update_rotation(self, rotation):
-        logger.debug("minicap update_rotation: {}", rotation)
-        self._update_rotation_event.set()
+    def teardown(self):
+        """close server"""
+        self.adb.kill_process(name=MNC_HOME)
+        if self.proc:
+            self.proc.kill()
+        if self.nbsp:
+            self.nbsp.kill()
+        self.adb.remove_forward('tcp:{}'.format(self.MNC_PORT))
+        logger.info('minicap teardown')

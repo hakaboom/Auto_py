@@ -9,7 +9,7 @@ from core.utils.nbsp import NonBlockingStreamReader
 from core.utils.safesocket import SafeSocket
 from core.utils.snippet import str2byte, get_std_encoding
 from core.constant import TEMP_HOME, MAX_HOME, MAX_INSTALL_PATH, MAX_LOCAL_NAME
-from .base import transform
+from .transform import transform
 
 
 class _Maxtouch(transform):

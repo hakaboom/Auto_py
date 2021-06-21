@@ -1,29 +1,29 @@
 # -*- coding: utf-8 -*-
 # https://github.com/AirtestProject/Airtest/blob/master/airtest/core/android/javacap.py
 # 使用airtest的yosemite实现
-import socket
 import struct
-from core.constant import JAC_LOCAL_NAME, JAC_CAP_PATH
+from core.constant import JAC_LOCAL_NAME
 from core.yosemite import Yosemite
 from core.utils.safesocket import SafeSocket
 from core.utils.snippet import reg_cleanup
 from core.utils.nbsp import NonBlockingStreamReader
+from core.cap_methods.base_cap import BaseCap
 from loguru import logger
 
-import cv2
-import numpy as np
 
-
-class Javacap(Yosemite):
+class Javacap(Yosemite, BaseCap):
 
     APP_PKG = "com.netease.nie.yosemite"
     SCREENCAP_SERVICE = "com.netease.nie.yosemite.Capture"
     RECVTIMEOUT = None
+    METHODS = 'javacap'
 
     def __init__(self, adb):
         super(Javacap, self).__init__(adb)
         self.JAC_LOCAL_NAME = JAC_LOCAL_NAME.format(self.adb.get_device_id())
         self.frame_gen = None
+        self.proc = None
+        self.nbsp = None
         # start server
         self._setup_stream_server()
         self.adb.set_forward('localabstract:%s' % self.JAC_LOCAL_NAME)
@@ -49,6 +49,7 @@ class Javacap(Yosemite):
 
     def get_frames(self):
         proc, nbsp = self._setup_stream_server()
+        self.proc, self.nbsp = proc, nbsp
         s = SafeSocket()
         s.connect((self.adb.host, self.JAC_PORT))
         t = s.recv(24)
@@ -78,7 +79,7 @@ class Javacap(Yosemite):
         proc.kill()
         self.adb.remove_forward("tcp:%s" % self.JAC_PORT)
 
-    def get_frame_from_stream(self) -> bytes:
+    def get_frame(self) -> bytes:
         if self.frame_gen is None:
             self.frame_gen = self.get_frames()
         return self.frame_gen.send(None)
@@ -86,3 +87,10 @@ class Javacap(Yosemite):
     def update_rotation(self, rotation):
         """ javacap 不需要转换"""
         pass
+
+    def teardown(self):
+        self.nbsp.kill()
+        self.proc.kill()
+        self.adb.remove_forward('tcp:{}'.format(self.JAC_PORT))
+        logger.info('javacap teardown')
+

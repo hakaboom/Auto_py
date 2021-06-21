@@ -5,7 +5,7 @@ import math
 import time
 from core.adb import ADB
 from loguru import logger
-from .base import transform
+from .transform import transform
 
 
 class Touch_event(transform):
