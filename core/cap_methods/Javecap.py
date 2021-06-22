@@ -49,7 +49,6 @@ class Javacap(Yosemite, BaseCap):
 
     def get_frames(self):
         proc, nbsp = self._setup_stream_server()
-        self.proc, self.nbsp = proc, nbsp
         s = SafeSocket()
         s.connect((self.adb.host, self.JAC_PORT))
         t = s.recv(24)
@@ -89,8 +88,6 @@ class Javacap(Yosemite, BaseCap):
         pass
 
     def teardown(self):
-        self.nbsp.kill()
-        self.proc.kill()
         self.adb.remove_forward('tcp:{}'.format(self.JAC_PORT))
         logger.info('javacap teardown')
 
