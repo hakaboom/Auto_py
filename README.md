@@ -16,7 +16,7 @@ python3.8
 - [x] 行为树
 
 ## 待完成事项
-- [ ]  更加合适的行为树设计
+- [ ]  更加合适的行为树设计, 集成pytest或其他测试框架
 - [ ]  基于PYQT5的图片管理软件 (https://github.com/hakaboom/IMAGELabel)
 - [ ]  重写cv模块,增加适应于不同图片的特征点获取与匹配方法 (https://github.com/hakaboom/py_image_registration)
 
