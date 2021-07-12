@@ -1,5 +1,5 @@
 # Auto_py
-学习airtest
+
 
 ## 系统要求
 python3.8
